@@ -7,7 +7,7 @@ from app.auth import hash_password
 from app.database import Base, SessionLocal, engine
 from app.models import Question, QuestionType, User, UserRole
 from app.pg_setup import setup_postgresql_extras
-from app.schema_migrate import ensure_user_profile_columns
+from app.schema_migrate import ensure_admin_role_enum, ensure_site_settings_table, ensure_user_profile_columns
 
 PASS_THRESHOLD = 80.0
 
@@ -70,6 +70,12 @@ QUESTIONS = [
 
 USERS = [
     {
+        "username": "admin",
+        "password": "admin123",
+        "role": UserRole.admin,
+        "full_name": "Администратор системы",
+    },
+    {
         "username": "manager",
         "password": "manager123",
         "role": UserRole.manager,
@@ -114,6 +120,8 @@ def ensure_users(db: Session) -> None:
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_user_profile_columns()
+    ensure_admin_role_enum()
+    ensure_site_settings_table()
     db = SessionLocal()
     try:
         ensure_users(db)

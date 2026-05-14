@@ -15,7 +15,8 @@ from app.models import (
     UserRole,
 )
 from app.schemas import QuestionOut, TestResultOut, TestSubmitRequest
-from app.seed import PASS_THRESHOLD, today_shift_date
+from app.services.site_settings import get_pass_threshold
+from app.seed import today_shift_date
 
 router = APIRouter(prefix="/api/test", tags=["test"])
 
@@ -130,7 +131,8 @@ def submit_test(
         )
 
     score = round((correct_count / len(questions)) * 100, 1) if questions else 0.0
-    passed = score >= PASS_THRESHOLD and not critical_failed
+    threshold = get_pass_threshold(db)
+    passed = score >= threshold and not critical_failed
     attempt.score_percent = score
     attempt.passed = passed
     attempt.status = AttemptStatus.ready if passed else AttemptStatus.not_ready
@@ -142,7 +144,7 @@ def submit_test(
     if passed:
         message = f"Допущен к работе. Результат: {score}%"
     else:
-        reason = "критический вопрос" if critical_failed else f"порог {PASS_THRESHOLD}%"
+        reason = "критический вопрос" if critical_failed else f"порог {threshold}%"
         message = f"Не допущен к работе ({reason}). Результат: {score}%"
 
     return TestResultOut(

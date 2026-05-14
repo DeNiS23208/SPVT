@@ -5,13 +5,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SPVT — Предвахтовое тестирование</title>
   <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="preload" as="image" href="{{ site.hero_background_url }}" fetchpriority="high">
+  <link rel="preload" as="image" href="{{ site.logo_url }}" fetchpriority="high">
+  <style id="server-site-paint">
+    :root { --accent: {{ site.accent_color }}; }
+    body.page-home {
+      background:
+        linear-gradient(rgba(8, 18, 32, {{ hero_top }}), rgba(8, 18, 32, {{ hero_bottom }})),
+        url("{{ site.hero_background_url }}") center center / cover no-repeat fixed;
+      background-color: #0b1220;
+    }
+  </style>
 </head>
-<body class="page-home">
+<body class="page-home" data-hero-url="{{ site.hero_background_url }}" data-logo-url="{{ site.logo_url }}">
   <div class="home-shell">
     <div class="container home-main">
       <div class="header">
-        <h1>Система предвахтового тестирования</h1>
-        <p class="subtitle">Проверка готовности работников к выходу на смену</p>
+        <h1>{{ site.site_title }}</h1>
+        <p class="subtitle">{{ site.site_subtitle }}</p>
       </div>
 
       <div class="card">
@@ -38,12 +49,13 @@
 
     <aside class="home-logo-panel" aria-hidden="true">
       <div class="logo-shine">
-        <img src="/static/images/ink-logo.png" alt="Иркутская нефтяная компания">
+        <img class="site-logo" src="{{ site.logo_url }}" alt="Иркутская нефтяная компания">
       </div>
     </aside>
   </div>
 
   <script src="/static/js/app.js"></script>
+  <script src="/static/js/site_settings.js"></script>
   <script>
     const token = getToken();
     const role = localStorage.getItem("spvt_role");

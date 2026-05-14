@@ -31,8 +31,10 @@ MANIFEST
 #   before PyInstaller builds the exe, so as to inject date/other infos into it.
 *.manifest
 *.spec
+!spvt-admin/SPVT-Admin.spec
 
-# Installer logs
+# macOS
+.DS_Store
 pip-log.txt
 pip-delete-this-directory.txt
 

@@ -13,6 +13,7 @@ from app.database import Base
 class UserRole(str, enum.Enum):
     worker = "worker"
     manager = "manager"
+    admin = "admin"
 
 
 class QuestionType(str, enum.Enum):
@@ -69,6 +70,13 @@ class TestAttempt(Base):
 
     user: Mapped["User"] = relationship(back_populates="attempts")
     answers: Mapped[list["Answer"]] = relationship(back_populates="attempt")
+
+
+class SiteSetting(Base):
+    __tablename__ = "site_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, default="")
 
 
 class Answer(Base):

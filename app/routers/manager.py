@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/manager", tags=["manager"])
 
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard(
-    _: Annotated[User, Depends(require_role(UserRole.manager))],
+    _: Annotated[User, Depends(require_role(UserRole.manager, UserRole.admin))],
     db: Annotated[Session, Depends(get_db)],
     shift_date: str | None = Query(default=None, description="YYYY-MM-DD"),
 ):
@@ -82,7 +82,7 @@ def dashboard(
 
 @router.post("/reset-attempt")
 def reset_attempt(
-    _: Annotated[User, Depends(require_role(UserRole.manager))],
+    _: Annotated[User, Depends(require_role(UserRole.manager, UserRole.admin))],
     db: Annotated[Session, Depends(get_db)],
     shift_date: str | None = Query(default=None, description="YYYY-MM-DD"),
     username: str | None = Query(default=None, description="Логин работника, пусто = все за дату"),
@@ -108,7 +108,7 @@ def reset_attempt(
 
 @router.get("/export/powerbi")
 def export_powerbi(
-    _: Annotated[User, Depends(require_role(UserRole.manager))],
+    _: Annotated[User, Depends(require_role(UserRole.manager, UserRole.admin))],
     db: Annotated[Session, Depends(get_db)],
     shift_date: str | None = Query(default=None, description="YYYY-MM-DD"),
 ):
