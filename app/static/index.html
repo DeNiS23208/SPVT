@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPVT — Предвахтовое тестирование</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="page-home">
+  <div class="home-shell">
+    <div class="container home-main">
+      <div class="header">
+        <h1>Система предвахтового тестирования</h1>
+        <p class="subtitle">Проверка готовности работников к выходу на смену</p>
+      </div>
+
+      <div class="card">
+        <h2>Вход в систему</h2>
+        <div id="login-error" class="alert alert-error hidden"></div>
+        <label for="username">Логин</label>
+        <input id="username" type="text" autocomplete="username" placeholder="worker или manager">
+        <label for="password">Пароль</label>
+        <input id="password" type="password" autocomplete="current-password" placeholder="Пароль">
+        <button id="login-btn" class="btn btn-primary" type="button">Войти</button>
+      </div>
+
+      <div class="role-cards">
+        <a class="role-card" href="/worker">
+          <strong>Работник</strong>
+          <span>Тест: worker / worker123</span>
+        </a>
+        <a class="role-card" href="/manager">
+          <strong>Начальник</strong>
+          <span>Кабинет: manager / manager123</span>
+        </a>
+      </div>
+    </div>
+
+    <aside class="home-logo-panel" aria-hidden="true">
+      <div class="logo-shine">
+        <img src="/static/images/ink-logo.png" alt="Иркутская нефтяная компания">
+      </div>
+    </aside>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    const token = getToken();
+    const role = localStorage.getItem("spvt_role");
+    if (token && role === "worker") location.href = "/worker";
+    if (token && role === "manager") location.href = "/manager";
+
+    const errorEl = document.getElementById("login-error");
+    const loginBtn = document.getElementById("login-btn");
+
+    async function doLogin() {
+      hideError(errorEl);
+      loginBtn.disabled = true;
+      try {
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+        const data = await API.login(username, password);
+        saveSession(data.access_token, data.role, data.full_name);
+        location.href = data.role === "manager" ? "/manager" : "/worker";
+      } catch (err) {
+        showError(errorEl, err.message);
+      } finally {
+        loginBtn.disabled = false;
+      }
+    }
+
+    loginBtn.addEventListener("click", doLogin);
+    document.getElementById("password").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") doLogin();
+    });
+  </script>
+</body>
+</html>

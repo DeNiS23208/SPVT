@@ -1,0 +1,8 @@
+[project]
+name = "spvt"
+version = "0.1.0"
+description = "Система предвахтового тестирования"
+requires-python = ">=3.11"
+
+[tool.uvicorn]
+factory = false

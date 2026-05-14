@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPVT — Кабинет начальника</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <div class="badge">Начальник</div>
+        <h1 style="margin:8px 0 0;font-size:1.3rem" id="user-name">Сводка по смене</h1>
+      </div>
+      <button class="btn btn-secondary" id="logout-btn" type="button">Выйти</button>
+    </div>
+
+    <div id="error-box" class="alert alert-error hidden"></div>
+
+    <div class="card">
+      <label for="shift-date">Дата смены</label>
+      <input id="shift-date" type="date">
+      <div style="display:grid;gap:10px;margin-top:8px">
+        <button class="btn btn-primary" id="refresh-btn" type="button">Обновить</button>
+        <button class="btn btn-success" id="export-btn" type="button">Выгрузить для Power BI (CSV)</button>
+        <button class="btn btn-danger" id="reset-btn" type="button">Сбросить тесты за дату (для проверки)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Статистика</h2>
+      <div class="grid-2" id="stats-grid">
+        <div class="stat"><div class="stat-value" id="stat-total">0</div><div class="stat-label">Всего работников</div></div>
+        <div class="stat"><div class="stat-value" id="stat-ready">0</div><div class="stat-label">Готовы</div></div>
+        <div class="stat"><div class="stat-value" id="stat-not-ready">0</div><div class="stat-label">Не готовы</div></div>
+        <div class="stat"><div class="stat-value" id="stat-not-started">0</div><div class="stat-label">Не проходили</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Результаты</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ФИО</th>
+              <th>Балл</th>
+              <th>Статус</th>
+            </tr>
+          </thead>
+          <tbody id="attempts-body"></tbody>
+        </table>
+      </div>
+      <p id="empty-note" class="subtitle hidden">Пока нет завершённых попыток за выбранную дату.</p>
+    </div>
+
+    <div class="card alert-info">
+      <strong>Power BI и выгрузка</strong>
+      <p class="subtitle" style="margin:8px 0 0">
+        Сайт не может по клику автоматически запустить Power BI на вашем ПК — это ограничение браузера и безопасности Windows.
+      </p>
+      <p class="subtitle" style="margin:8px 0 0">
+        <strong>Как быстрее всего:</strong> скачайте CSV → откройте Power BI Desktop →
+        <em>Получить данные → Текстовый/CSV</em> → укажите файл → разделитель <strong>;</strong>, кодировка UTF-8.
+      </p>
+      <details style="margin-top:12px;color:var(--muted)">
+        <summary style="cursor:pointer;color:var(--accent)">Дополнительно: «почти в один клик» в браузере</summary>
+        <p style="margin:10px 0 0;line-height:1.55">
+          В Chrome или Edge после скачивания нажмите на стрелку у файла в панели загрузок и при необходимости включите
+          «Всегда открывать файлы такого типа». По умолчанию CSV чаще открывается в Excel, а не в Power BI —
+          для Power BI удобнее один раз сохранить шаблон отчёта (.pbix), подключённый к папке «Загрузки», и открывать его,
+          затем нажимать <em>Обновить</em> после новой выгрузки.
+        </p>
+      </details>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+  <script>
+    const token = getToken();
+    const role = localStorage.getItem("spvt_role");
+    if (!token || role !== "manager") location.href = "/";
+
+    document.getElementById("user-name").textContent =
+      localStorage.getItem("spvt_full_name") || "Начальник";
+
+    document.getElementById("logout-btn").addEventListener("click", () => {
+      clearSession();
+      location.href = "/";
+    });
+
+    const shiftInput = document.getElementById("shift-date");
+    const errorBox = document.getElementById("error-box");
+    shiftInput.valueAsDate = new Date();
+
+    function formatDateParam() {
+      return shiftInput.value;
+    }
+
+    async function loadDashboard() {
+      hideError(errorBox);
+      const date = formatDateParam();
+      const data = await API.get(`/api/manager/dashboard?shift_date=${date}`, token);
+
+      document.getElementById("stat-total").textContent = data.total_workers;
+      document.getElementById("stat-ready").textContent = data.ready;
+      document.getElementById("stat-not-ready").textContent = data.not_ready;
+      document.getElementById("stat-not-started").textContent = data.not_started;
+
+      const tbody = document.getElementById("attempts-body");
+      tbody.innerHTML = "";
+      const emptyNote = document.getElementById("empty-note");
+
+      if (!data.attempts.length) {
+        emptyNote.classList.remove("hidden");
+        return;
+      }
+      emptyNote.classList.add("hidden");
+
+      data.attempts.forEach((item) => {
+        const st = statusLabel(item.status);
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${item.employee_name}</td>
+          <td>${item.score_percent ?? "—"}%</td>
+          <td class="${st.className}">${st.text}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", async () => {
+      try {
+        await loadDashboard();
+      } catch (err) {
+        showError(errorBox, err.message);
+      }
+    });
+
+    document.getElementById("export-btn").addEventListener("click", () => {
+      const date = formatDateParam();
+      const url = `/api/manager/export/powerbi?shift_date=${encodeURIComponent(date)}`;
+      fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+        .then(async (res) => {
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.detail || "Ошибка выгрузки");
+          }
+          return res.blob();
+        })
+        .then((blob) => {
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = `spvt_vyvozka_${date}.csv`;
+          link.click();
+          URL.revokeObjectURL(link.href);
+        })
+        .catch((err) => showError(errorBox, err.message));
+    });
+
+    document.getElementById("reset-btn").addEventListener("click", async () => {
+      const date = formatDateParam();
+      if (!confirm(`Сбросить все попытки теста за ${date}? Работники смогут пройти тест заново.`)) return;
+      try {
+        const res = await fetch(`/api/manager/reset-attempt?shift_date=${encodeURIComponent(date)}`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || "Ошибка сброса");
+        alert(data.message || "Готово");
+        await loadDashboard();
+      } catch (err) {
+        showError(errorBox, err.message);
+      }
+    });
+
+    loadDashboard().catch((err) => showError(errorBox, err.message));
+  </script>
+</body>
+</html>

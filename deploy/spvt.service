@@ -1,0 +1,15 @@
+[Unit]
+Description=SPVT FastAPI
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/spvt
+EnvironmentFile=/etc/spvt.env
+ExecStart=/opt/spvt/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
