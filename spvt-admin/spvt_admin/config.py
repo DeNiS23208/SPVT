@@ -20,4 +20,16 @@ def save_server_url(url: str) -> None:
 
 
 def saved_username() -> str:
-    return settings().value("username", "admin", str)
+    return settings().value("username", "гуляев_дм", str)
+
+
+def ssl_verify_enabled() -> bool:
+    """Проверять ли сертификат HTTPS (по умолчанию да)."""
+    raw = settings().value("ssl_verify", "true")
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).lower() not in ("0", "false", "no", "off")
+
+
+def save_ssl_verify(enabled: bool) -> None:
+    settings().setValue("ssl_verify", "true" if enabled else "false")

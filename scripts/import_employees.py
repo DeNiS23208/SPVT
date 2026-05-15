@@ -18,7 +18,7 @@ def main() -> None:
     parser.add_argument(
         "--password",
         default=None,
-        help="Пароль для новых аккаунтов (по умолчанию DEFAULT_WORKER_PASSWORD или INK2026)",
+        help="Пароль для аккаунтов (по умолчанию 123)",
     )
     parser.add_argument(
         "--no-update",

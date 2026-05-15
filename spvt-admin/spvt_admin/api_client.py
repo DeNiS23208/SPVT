@@ -5,7 +5,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import certifi
 import requests
+import urllib3
 
 
 class ApiError(Exception):
@@ -23,10 +25,16 @@ class LoginResult:
 
 
 class SpvtApiClient:
-    def __init__(self, base_url: str, timeout: float = 60.0) -> None:
+    def __init__(self, base_url: str, timeout: float = 60.0, *, verify_ssl: bool = True) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
         self._token: str | None = None
+        self._session = requests.Session()
+        if verify_ssl:
+            self._session.verify = certifi.where()
+        else:
+            self._session.verify = False
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
     @property
     def token(self) -> str | None:
@@ -64,7 +72,7 @@ class SpvtApiClient:
         raise ApiError(detail, response.status_code)
 
     def login(self, username: str, password: str) -> LoginResult:
-        response = requests.post(
+        response = self._session.post(
             self._url("/api/auth/login"),
             data={"username": username, "password": password},
             headers={"Accept": "application/json"},
@@ -84,7 +92,7 @@ class SpvtApiClient:
         params = {}
         if shift_date:
             params["shift_date"] = shift_date
-        response = requests.get(
+        response = self._session.get(
             self._url("/api/manager/dashboard"),
             params=params,
             headers=self._headers(),
@@ -97,7 +105,7 @@ class SpvtApiClient:
         params = {}
         if shift_date:
             params["shift_date"] = shift_date
-        response = requests.get(
+        response = self._session.get(
             self._url("/api/manager/export/powerbi"),
             params=params,
             headers={**self._headers(json=False), "Accept": "text/csv"},
@@ -114,7 +122,7 @@ class SpvtApiClient:
             params["shift_date"] = shift_date
         if username:
             params["username"] = username
-        response = requests.post(
+        response = self._session.post(
             self._url("/api/manager/reset-attempt"),
             params=params,
             headers=self._headers(),
@@ -124,7 +132,7 @@ class SpvtApiClient:
         return response.json()
 
     def get_settings(self) -> dict[str, Any]:
-        response = requests.get(
+        response = self._session.get(
             self._url("/api/admin/settings"),
             headers=self._headers(),
             timeout=self.timeout,
@@ -133,7 +141,7 @@ class SpvtApiClient:
         return response.json()
 
     def update_settings(self, payload: dict[str, Any]) -> dict[str, Any]:
-        response = requests.put(
+        response = self._session.put(
             self._url("/api/admin/settings"),
             json=payload,
             headers=self._headers(),
@@ -158,7 +166,7 @@ class SpvtApiClient:
     def upload_background(self, file_path: str) -> dict[str, Any]:
         name, file_obj, mime = self._file_upload_tuple(file_path)
         try:
-            response = requests.post(
+            response = self._session.post(
                 self._url("/api/admin/upload/background"),
                 headers={"Authorization": f"Bearer {self._token}", "Accept": "application/json"},
                 files={"file": (name, file_obj, mime)},
@@ -172,7 +180,7 @@ class SpvtApiClient:
     def upload_logo(self, file_path: str) -> dict[str, Any]:
         name, file_obj, mime = self._file_upload_tuple(file_path)
         try:
-            response = requests.post(
+            response = self._session.post(
                 self._url("/api/admin/upload/logo"),
                 headers={"Authorization": f"Bearer {self._token}", "Accept": "application/json"},
                 files={"file": (name, file_obj, mime)},
@@ -184,7 +192,7 @@ class SpvtApiClient:
         return response.json()
 
     def list_questions(self) -> list[dict[str, Any]]:
-        response = requests.get(
+        response = self._session.get(
             self._url("/api/admin/questions"),
             headers=self._headers(),
             timeout=self.timeout,
@@ -193,7 +201,7 @@ class SpvtApiClient:
         return response.json()
 
     def create_question(self, payload: dict[str, Any]) -> dict[str, Any]:
-        response = requests.post(
+        response = self._session.post(
             self._url("/api/admin/questions"),
             json=payload,
             headers=self._headers(),
@@ -203,7 +211,7 @@ class SpvtApiClient:
         return response.json()
 
     def update_question(self, question_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-        response = requests.put(
+        response = self._session.put(
             self._url(f"/api/admin/questions/{question_id}"),
             json=payload,
             headers=self._headers(),
@@ -213,7 +221,7 @@ class SpvtApiClient:
         return response.json()
 
     def delete_question(self, question_id: int) -> dict[str, Any]:
-        response = requests.delete(
+        response = self._session.delete(
             self._url(f"/api/admin/questions/{question_id}"),
             headers=self._headers(),
             timeout=self.timeout,

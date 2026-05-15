@@ -22,6 +22,11 @@ class UserInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DepartmentWorkerOut(BaseModel):
+    username: str
+    full_name: str
+
+
 class QuestionOut(BaseModel):
     id: int
     text: str

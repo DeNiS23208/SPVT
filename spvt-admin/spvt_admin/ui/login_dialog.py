@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QSettings, Qt
+from PySide6.QtCore import QSettings
 from PySide6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFormLayout,
@@ -12,7 +13,7 @@ from PySide6.QtWidgets import (
 )
 
 from spvt_admin.api_client import ApiError, SpvtApiClient
-from spvt_admin.config import save_server_url, saved_username, server_url
+from spvt_admin.config import save_server_url, save_ssl_verify, saved_username, server_url, ssl_verify_enabled
 
 
 class LoginDialog(QDialog):
@@ -20,7 +21,7 @@ class LoginDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("SPVT Admin — вход")
         self.setModal(True)
-        self.resize(440, 320)
+        self.resize(480, 420)
         self._client: SpvtApiClient | None = None
         self._login_result = None
 
@@ -33,11 +34,20 @@ class LoginDialog(QDialog):
         self.server_edit.setPlaceholderText("https://45-144-220-51.nip.io")
 
         self.username_edit = QLineEdit(saved_username())
-        self.username_edit.setPlaceholderText("admin или manager")
+        self.username_edit.setPlaceholderText("гуляев_дм")
 
         self.password_edit = QLineEdit()
         self.password_edit.setEchoMode(QLineEdit.EchoMode.Password)
         self.password_edit.setPlaceholderText("Пароль")
+
+        self.ssl_insecure_cb = QCheckBox("Не проверять SSL-сертификат (небезопасно)")
+        self.ssl_insecure_cb.setChecked(not ssl_verify_enabled())
+        ssl_hint = QLabel(
+            "Если появляется ошибка про certificate / SSL — включите галочку "
+            "или обновите Windows; на сервере должен быть полный цепочный сертификат (fullchain)."
+        )
+        ssl_hint.setWordWrap(True)
+        ssl_hint.setObjectName("subtitle")
 
         form = QFormLayout()
         form.setSpacing(12)
@@ -60,6 +70,8 @@ class LoginDialog(QDialog):
         layout.addWidget(title)
         layout.addWidget(subtitle)
         layout.addLayout(form)
+        layout.addWidget(ssl_hint)
+        layout.addWidget(self.ssl_insecure_cb)
         layout.addStretch(1)
         layout.addWidget(buttons)
 
@@ -82,29 +94,37 @@ class LoginDialog(QDialog):
             QMessageBox.warning(self, "Вход", "Заполните сервер, логин и пароль.")
             return
 
-        client = SpvtApiClient(base_url)
+        client = SpvtApiClient(base_url, verify_ssl=not self.ssl_insecure_cb.isChecked())
         try:
             result = client.login(username, password)
         except ApiError as exc:
             QMessageBox.critical(self, "Ошибка входа", str(exc))
             return
         except Exception as exc:
+            msg = str(exc)
+            extra = ""
+            if "CERTIFICATE_VERIFY_FAILED" in msg or "SSL" in msg or "certificate" in msg.lower():
+                extra = (
+                    "\n\nВключите «Не проверять SSL-сертификат» ниже и повторите вход "
+                    "(только если доверяете серверу), либо обновите Windows."
+                )
             QMessageBox.critical(
                 self,
                 "Ошибка соединения",
-                f"Не удалось подключиться к серверу:\n{exc}",
+                f"Не удалось подключиться к серверу:\n{msg}{extra}",
             )
             return
 
-        if result.role not in ("manager", "admin"):
+        if result.role != "admin":
             QMessageBox.warning(
                 self,
                 "Доступ запрещён",
-                "Доступ имеют только роли «начальник» и «администратор».",
+                "Доступ имеет только администратор системы.",
             )
             return
 
         save_server_url(base_url)
+        save_ssl_verify(not self.ssl_insecure_cb.isChecked())
         QSettings("INK", "SPVT-Admin").setValue("username", username)
 
         self._client = client

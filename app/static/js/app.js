@@ -1,6 +1,7 @@
 const API = {
-  async login(username, password) {
+  async login(username, password, department = null) {
     const body = new URLSearchParams({ username, password });
+    if (department) body.set("department", department);
     const res = await fetch("/api/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -8,6 +9,13 @@ const API = {
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || "Ошибка входа");
+    return data;
+  },
+
+  async getPublic(path) {
+    const res = await fetch(path);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.detail || "Ошибка запроса");
     return data;
   },
 

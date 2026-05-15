@@ -10,7 +10,7 @@
   <div class="container">
     <div class="topbar">
       <div>
-        <div class="badge">Начальник</div>
+        <div class="badge">Администратор</div>
         <h1 style="margin:8px 0 0;font-size:1.3rem" id="user-name">Сводка по смене</h1>
       </div>
       <button class="btn btn-secondary" id="logout-btn" type="button">Выйти</button>
@@ -81,10 +81,10 @@
   <script>
     const token = getToken();
     const role = localStorage.getItem("spvt_role");
-    if (!token || role !== "manager") location.href = "/";
+    if (!token || (role !== "manager" && role !== "admin")) location.href = "/";
 
     document.getElementById("user-name").textContent =
-      localStorage.getItem("spvt_full_name") || "Начальник";
+      localStorage.getItem("spvt_full_name") || "Администратор";
 
     document.getElementById("logout-btn").addEventListener("click", () => {
       clearSession();

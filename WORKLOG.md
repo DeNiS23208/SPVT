@@ -256,3 +256,84 @@ WORKLOG.md
 ### 13.8 Деплой на сервер в этот день
 
 - Обновления на **`45.144.220.51`**: `tar` + `deploy/post_deploy.sh`, отдельные `scp` для статики при необходимости.
+
+---
+
+## 14. Доработки 15 мая 2026 — вход по подразделениям, ~2100 сотрудников, один админ
+
+### 14.1 Импорт и синхронизация с Excel
+
+- Источник: **`Работники ИНКС.xlsx`** (~2096 строк, 77 подразделений).
+- Модули: `app/employee_import.py`, `app/employee_sync.py`, `app/name_utils.py` (нормализация ФИО, `ё`→`е`).
+- Скрипты:
+  - `scripts/import_employees.py` — первичный импорт;
+  - `scripts/sync_employees_from_excel.py` — пересинхронизация должности/подразделения (`--no-create` на деплое);
+  - `scripts/audit_excel_exact_match.py`, `scripts/report_department_mismatches.py`, `scripts/compare_dept_counts.py` — проверка БД vs Excel.
+- На продакшене после сверки: **0 расхождений** по подразделению при точном совпадении ФИО.
+- Файл на сервере: `/opt/spvt/data/employees_ink.xlsx` (в git не коммитится).
+
+### 14.2 Логины и пароли
+
+- Пароль для всех работников: **`123`** (`app/usernames.py`, `DEFAULT_PASSWORD`).
+- Логин кириллицей: **`фамилия_инициалы`** (`username_from_name()`), например `гуляев_дм`.
+- Скрипт `scripts/apply_auth_policy.py` — массовая смена логинов.
+- Удалены тестовые работники: `scripts/remove_test_users.py` (в `post_deploy.sh`).
+
+### 14.3 Главная страница — вход работника
+
+- **`app/templates/index.html`**: выбор **подразделение → ФИО** → пароль.
+- **`app/static/js/login.js`**: загрузка `/api/public/departments`, `/api/public/department-workers`.
+- **`app/routers/auth.py`**: поле `department` при логине; проверка в `authenticate_user()`.
+- Убраны карточки тестовых аккаунтов и кнопка «Вход для начальника или администратора».
+- Убраны подписи «ИНК-СЕРВИС» под/над логотипом (только картинка логотипа справа).
+
+### 14.4 Один администратор
+
+- **`app/admin_account.py`**, `scripts/ensure_single_admin.py` (в `post_deploy.sh`).
+- Единственный админ: **Гуляев Денис Михайлович** — логин **`гуляев_дм`**, пароль **`123`**, подразделение «Отдел АСУП (месторождение)».
+- Удалены служебные учётки `админ` / `начальник`; остальные роли `admin`/`manager` понижены до `worker`.
+- Вход админа на сайте: подразделение АСУП → своё ФИО → `/manager`.
+- **SPVT-Admin (Windows):** логин `гуляев_дм` / `123`, только роль `admin`.
+
+### 14.5 Эксперимент с логотипом «ИНК-СЕРВИС» (откат)
+
+- Попытка заменить в PNG текст «Иркутская нефтяная компания» на «ИНК-СЕРВИС» (`scripts/relabel_ink_logo.py`, `ink-logo-inkservice.png`).
+- Проблемы: наложение текста на значок; **двойной логотип** (фон с животными содержит «ИНК» в сердце + отдельный PNG справа).
+- **Откат** (`scripts/rollback_site_media.py`): снова `ink-logo.png` + `hero-bg-d7b69497f2-opt.webp`.
+
+### 14.6 Текущее состояние production (после отката медиа)
+
+| Параметр | Значение |
+|----------|----------|
+| Сайт | https://45-144-220-51.nip.io |
+| Работников в БД | ~2096 |
+| `logo_url` | `/static/images/ink-logo.png` |
+| `hero_background_url` | `/static/images/hero-bg-d7b69497f2-opt.webp` |
+| Админ | `гуляев_дм` / `123` |
+
+### 14.7 Деплой (типовой, май 2026)
+
+```bash
+tar -czf spvt-deploy.tgz --exclude="__pycache__" --exclude=".venv" --exclude="spvt-admin" --exclude="*.db" --exclude="data" app requirements.txt deploy scripts
+scp spvt-deploy.tgz root@45.144.220.51:/opt/spvt/
+ssh root@45.144.220.51 "cd /opt/spvt && tar xzf spvt-deploy.tgz && bash deploy/post_deploy.sh"
+```
+
+`post_deploy.sh` дополнительно: `remove_test_users.py` → `sync_employees_from_excel.py` (если есть xlsx) → `ensure_single_admin.py`.
+
+### 14.8 Переписка (Cursor)
+
+- Полный экспорт чата (май 2026): **`cursor_.md`** в корне репозитория.
+- Краткий лог сессии 15.05.2026: **`docs/CHAT_LOG_2026-05-15.md`**.
+- ID транскрипта агента (в Cursor): `09e5edee-5876-4c0b-8d91-f1de3ca5dda4`.
+
+---
+
+## 15. Актуальные учётные данные (не коммитить пароли в публичные места)
+
+| Роль | Логин | Пароль | Примечание |
+|------|-------|--------|------------|
+| Администратор | `гуляев_дм` | `123` | Сайт + SPVT-Admin |
+| Работник | `фамилия_инициалы` | `123` | Список по подразделению на главной |
+
+Секреты сервера: `/etc/spvt.env`, `/root/spvt-db-credentials.txt`.

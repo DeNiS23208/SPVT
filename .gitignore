@@ -32,6 +32,7 @@ MANIFEST
 *.manifest
 *.spec
 !spvt-admin/SPVT-Admin.spec
+!spvt-admin/SPVT-Admin-windows.spec
 
 # macOS
 .DS_Store
@@ -63,8 +64,11 @@ local_settings.py
 db.sqlite3
 db.sqlite3-journal
 spvt.db
-data/*.xlsx
+data/*
+!data/.gitkeep
 *.tgz
+spvt-admin/assets/spvt-admin.ico
+spvt-admin/SPVT_Admin_for_USB*.zip
 
 # Flask stuff:
 instance/

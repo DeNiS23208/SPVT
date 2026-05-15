@@ -1,10 +1,10 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SPVT — Предвахтовое тестирование</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <title>ИНК-СЕРВИС — Предвахтовое тестирование</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=4">
   <link rel="preload" as="image" href="{{ site.hero_background_url }}" fetchpriority="high">
   <link rel="preload" as="image" href="{{ site.logo_url }}" fetchpriority="high">
   <style id="server-site-paint">
@@ -20,71 +20,63 @@
 <body class="page-home" data-hero-url="{{ site.hero_background_url }}" data-logo-url="{{ site.logo_url }}">
   <div class="home-shell">
     <div class="container home-main">
-      <div class="header">
+      <header class="header home-header">
         <h1>{{ site.site_title }}</h1>
         <p class="subtitle">{{ site.site_subtitle }}</p>
-      </div>
+      </header>
 
-      <div class="card">
-        <h2>Вход в систему</h2>
+      <div class="card login-card">
+        <div class="login-card-head">
+          <h2>Вход в систему</h2>
+          <p class="login-card-lead">Выберите подразделение и своё ФИО — пароль единый для всех сотрудников.</p>
+        </div>
+
         <div id="login-error" class="alert alert-error hidden"></div>
-        <label for="username">Логин</label>
-        <input id="username" type="text" autocomplete="username" placeholder="worker или manager">
-        <label for="password">Пароль</label>
-        <input id="password" type="password" autocomplete="current-password" placeholder="Пароль">
-        <button id="login-btn" class="btn btn-primary" type="button">Войти</button>
-      </div>
 
-      <div class="role-cards">
-        <a class="role-card" href="/worker">
-          <strong>Работник</strong>
-          <span>Тест: worker / worker123</span>
-        </a>
-        <a class="role-card" href="/manager">
-          <strong>Начальник</strong>
-          <span>Кабинет: manager / manager123</span>
-        </a>
+        <div id="worker-login-block" class="login-form">
+          <div class="form-field">
+            <label for="department">Подразделение</label>
+            <div class="select-wrap">
+              <select id="department" autocomplete="organization">
+                <option value="">Выберите подразделение</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-field">
+            <label for="employee">Сотрудник</label>
+            <div class="select-wrap">
+              <select id="employee" disabled>
+                <option value="">Сначала выберите подразделение</option>
+              </select>
+            </div>
+            <p class="login-hint" id="dept-hint">Сначала укажите подразделение, затем выберите своё ФИО.</p>
+          </div>
+
+          <div class="form-field form-field-muted">
+            <label for="username">Логин (подставится автоматически)</label>
+            <input id="username" type="text" readonly tabindex="-1" placeholder="—">
+          </div>
+        </div>
+
+        <div class="form-field">
+          <label for="password">Пароль</label>
+          <input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль">
+        </div>
+
+        <button id="login-btn" class="btn btn-primary btn-login" type="button">Войти</button>
       </div>
     </div>
 
-    <aside class="home-logo-panel" aria-hidden="true">
+    <aside class="home-logo-panel" aria-label="Логотип">
       <div class="logo-shine">
-        <img class="site-logo" src="{{ site.logo_url }}" alt="Иркутская нефтяная компания">
+        <img class="site-logo" src="{{ site.logo_url }}" alt="">
       </div>
     </aside>
   </div>
 
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/site_settings.js"></script>
-  <script>
-    const token = getToken();
-    const role = localStorage.getItem("spvt_role");
-    if (token && role === "worker") location.href = "/worker";
-    if (token && role === "manager") location.href = "/manager";
-
-    const errorEl = document.getElementById("login-error");
-    const loginBtn = document.getElementById("login-btn");
-
-    async function doLogin() {
-      hideError(errorEl);
-      loginBtn.disabled = true;
-      try {
-        const username = document.getElementById("username").value.trim();
-        const password = document.getElementById("password").value;
-        const data = await API.login(username, password);
-        saveSession(data.access_token, data.role, data.full_name);
-        location.href = data.role === "manager" ? "/manager" : "/worker";
-      } catch (err) {
-        showError(errorEl, err.message);
-      } finally {
-        loginBtn.disabled = false;
-      }
-    }
-
-    loginBtn.addEventListener("click", doLogin);
-    document.getElementById("password").addEventListener("keydown", (e) => {
-      if (e.key === "Enter") doLogin();
-    });
-  </script>
+  <script src="/static/js/app.js?v=4"></script>
+  <script src="/static/js/site_settings.js?v=4"></script>
+  <script src="/static/js/login.js?v=4"></script>
 </body>
 </html>

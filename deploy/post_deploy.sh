@@ -12,6 +12,11 @@ set +a
 .venv/bin/python -c "from app.schema_migrate import ensure_user_profile_columns; ensure_user_profile_columns()"
 .venv/bin/python scripts/migrate_sqlite_to_postgres.py /opt/spvt/spvt.db || true
 .venv/bin/python -c "from app.seed import init_db; init_db()"
+.venv/bin/python scripts/remove_test_users.py || true
+if [ -f data/employees_ink.xlsx ]; then
+  .venv/bin/python scripts/sync_employees_from_excel.py data/employees_ink.xlsx --no-create
+fi
+.venv/bin/python scripts/ensure_single_admin.py
 chown -R www-data:www-data /opt/spvt
 systemctl restart spvt
 sleep 2

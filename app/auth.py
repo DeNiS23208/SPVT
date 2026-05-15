@@ -34,10 +34,20 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def authenticate_user(db: Session, username: str, password: str) -> User | None:
+def authenticate_user(
+    db: Session,
+    username: str,
+    password: str,
+    *,
+    department: str | None = None,
+) -> User | None:
     user = db.query(User).filter(User.username == username).first()
     if not user or not verify_password(password, user.password_hash):
         return None
+    if user.role == UserRole.worker and department:
+        user_dept = (user.department or "").strip()
+        if user_dept != department.strip():
+            return None
     return user
 
 

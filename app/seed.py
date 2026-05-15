@@ -3,9 +3,9 @@ from datetime import date, datetime
 
 from sqlalchemy.orm import Session
 
-from app.auth import hash_password
 from app.database import Base, SessionLocal, engine
-from app.models import Question, QuestionType, User, UserRole
+from app.models import Question, QuestionType
+from app.admin_account import ensure_single_admin
 from app.pg_setup import setup_postgresql_extras
 from app.schema_migrate import ensure_admin_role_enum, ensure_site_settings_table, ensure_user_profile_columns
 
@@ -68,55 +68,6 @@ QUESTIONS = [
     },
 ]
 
-USERS = [
-    {
-        "username": "admin",
-        "password": "admin123",
-        "role": UserRole.admin,
-        "full_name": "Администратор системы",
-    },
-    {
-        "username": "manager",
-        "password": "manager123",
-        "role": UserRole.manager,
-        "full_name": "Начальник смены (тест)",
-    },
-    {
-        "username": "worker",
-        "password": "worker123",
-        "role": UserRole.worker,
-        "full_name": "Иванов Иван Иванович (тест)",
-    },
-    {
-        "username": "worker2",
-        "password": "worker123",
-        "role": UserRole.worker,
-        "full_name": "Петров Пётр Петрович (тест)",
-    },
-    {
-        "username": "worker3",
-        "password": "worker123",
-        "role": UserRole.worker,
-        "full_name": "Сидоров Сидор Сидорович (тест)",
-    },
-]
-
-
-def ensure_users(db: Session) -> None:
-    for item in USERS:
-        exists = db.query(User).filter(User.username == item["username"]).first()
-        if exists:
-            continue
-        db.add(
-            User(
-                username=item["username"],
-                password_hash=hash_password(item["password"]),
-                role=item["role"],
-                full_name=item["full_name"],
-            )
-        )
-
-
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_user_profile_columns()
@@ -124,7 +75,7 @@ def init_db() -> None:
     ensure_site_settings_table()
     db = SessionLocal()
     try:
-        ensure_users(db)
+        ensure_single_admin(db)
 
         if db.query(Question).count() == 0:
             for item in QUESTIONS:

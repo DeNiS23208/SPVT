@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass
 
 from openpyxl import load_workbook
@@ -9,71 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.auth import hash_password
 from app.models import User, UserRole
-
-_CYRILLIC = {
-    "а": "a",
-    "б": "b",
-    "в": "v",
-    "г": "g",
-    "д": "d",
-    "е": "e",
-    "ё": "e",
-    "ж": "zh",
-    "з": "z",
-    "и": "i",
-    "й": "y",
-    "к": "k",
-    "л": "l",
-    "м": "m",
-    "н": "n",
-    "о": "o",
-    "п": "p",
-    "р": "r",
-    "с": "s",
-    "т": "t",
-    "у": "u",
-    "ф": "f",
-    "х": "kh",
-    "ц": "ts",
-    "ч": "ch",
-    "ш": "sh",
-    "щ": "shch",
-    "ъ": "",
-    "ы": "y",
-    "ь": "",
-    "э": "e",
-    "ю": "yu",
-    "я": "ya",
-}
-
-
-def translit(text: str) -> str:
-    result: list[str] = []
-    for char in text.strip().lower():
-        if char in _CYRILLIC:
-            result.append(_CYRILLIC[char])
-        elif char.isalnum():
-            result.append(char)
-    return "".join(result)
-
-
-def username_from_name(full_name: str, row_num: int, used: set[str]) -> str:
-    parts = [part for part in full_name.split() if part]
-    if len(parts) >= 3:
-        base = f"{translit(parts[0])}_{translit(parts[1][0])}{translit(parts[2][0])}"
-    elif len(parts) == 2:
-        base = f"{translit(parts[0])}_{translit(parts[1][0])}"
-    else:
-        base = f"emp_{row_num:04d}"
-
-    base = re.sub(r"[^a-z0-9_]", "", base.lower())[:48] or f"emp_{row_num:04d}"
-    candidate = base
-    suffix = 2
-    while candidate in used:
-        candidate = f"{base}_{suffix}"
-        suffix += 1
-    used.add(candidate)
-    return candidate
+from app.name_utils import normalize_name_key
+from app.usernames import DEFAULT_PASSWORD, username_from_name
 
 
 @dataclass
@@ -123,28 +59,37 @@ def import_employees_from_xlsx(
     default_password: str | None = None,
     update_existing: bool = True,
 ) -> ImportStats:
-    password = default_password or os.environ.get("DEFAULT_WORKER_PASSWORD", "INK2026")
+    password = default_password or os.environ.get("DEFAULT_WORKER_PASSWORD", DEFAULT_PASSWORD)
+    password_hash = hash_password(password)
     employees = read_employees_xlsx(path)
     stats = ImportStats()
 
     existing_by_name = {
-        user.full_name.strip().lower(): user
+        normalize_name_key(user.full_name): user
         for user in db.query(User).filter(User.role == UserRole.worker).all()
     }
     used_usernames = {user.username for user in db.query(User).all()}
 
     for index, employee in enumerate(employees, start=1):
-        key = employee.full_name.lower()
+        key = normalize_name_key(employee.full_name)
         existing = existing_by_name.get(key)
+
         if existing:
+            if existing.username in used_usernames:
+                used_usernames.discard(existing.username)
+            new_username = username_from_name(employee.full_name, index, used_usernames)
             if update_existing:
                 changed = False
+                if existing.username != new_username:
+                    existing.username = new_username
+                    changed = True
                 if employee.position and existing.position != employee.position:
                     existing.position = employee.position
                     changed = True
                 if employee.department and existing.department != employee.department:
                     existing.department = employee.department
                     changed = True
+                existing.password_hash = password_hash
                 if changed:
                     stats.updated += 1
                 else:
@@ -153,11 +98,11 @@ def import_employees_from_xlsx(
                 stats.skipped += 1
             continue
 
-        username = username_from_name(employee.full_name, index, used_usernames)
+        new_username = username_from_name(employee.full_name, index, used_usernames)
         db.add(
             User(
-                username=username,
-                password_hash=hash_password(password),
+                username=new_username,
+                password_hash=password_hash,
                 role=UserRole.worker,
                 full_name=employee.full_name,
                 position=employee.position or None,
