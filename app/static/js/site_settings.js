@@ -15,7 +15,10 @@ async function loadSiteSettings() {
     const logoEl = document.querySelector(".logo-shine img, img.site-logo");
     const logoWrap = document.querySelector(".logo-shine");
     if (logoEl && settings.logo_url) {
-      logoEl.src = settings.logo_url;
+      const logoUrl = settings.logo_url.includes("?")
+        ? settings.logo_url
+        : `${settings.logo_url}?v=10`;
+      logoEl.src = logoUrl;
       syncLogoMask(logoWrap, settings.logo_url);
     } else {
       syncLogoMask(logoWrap, logoEl?.getAttribute("src"));

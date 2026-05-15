@@ -295,23 +295,32 @@ WORKLOG.md
 - Вход админа на сайте: подразделение АСУП → своё ФИО → `/manager`.
 - **SPVT-Admin (Windows):** логин `гуляев_дм` / `123`, только роль `admin`.
 
-### 14.5 Эксперимент с логотипом «ИНК-СЕРВИС» (откат)
+### 14.5 Эксперимент с логотипом «ИНК-СЕРВИС» (откат, май 2026)
 
 - Попытка заменить в PNG текст «Иркутская нефтяная компания» на «ИНК-СЕРВИС» (`scripts/relabel_ink_logo.py`, `ink-logo-inkservice.png`).
 - Проблемы: наложение текста на значок; **двойной логотип** (фон с животными содержит «ИНК» в сердце + отдельный PNG справа).
 - **Откат** (`scripts/rollback_site_media.py`): снова `ink-logo.png` + `hero-bg-d7b69497f2-opt.webp`.
 
-### 14.6 Текущее состояние production (после отката медиа)
+### 14.6 Логотип «ИНК-СЕРВИС» — финальная версия (15 мая 2026)
+
+- Утверждён логотип, подготовленный вручную: эмблема ИНК + надпись **«ИНК-СЕРВИС»** справа, без наложения на лепестки.
+- Файл: **`app/static/images/ink-logo.png`** (~19 КБ, прозрачный фон: тёмные пиксели фона вырезаны для корректного блика).
+- На главной: блок **`.logo-shine`**, анимация **`logo-shimmer`** (белый блик по маске PNG) — без изменений в CSS.
+- Сброс кэша браузера: `?v=10` в `index.html` и `site_settings.js`.
+- Production: залито на `45.144.220.51`, `logo_url` в БД: `/static/images/ink-logo.png`.
+
+### 14.7 Текущее состояние production
 
 | Параметр | Значение |
 |----------|----------|
 | Сайт | https://45-144-220-51.nip.io |
 | Работников в БД | ~2096 |
-| `logo_url` | `/static/images/ink-logo.png` |
+| `logo_url` | `/static/images/ink-logo.png` (ИНК-СЕРВИС, прозрачный PNG) |
 | `hero_background_url` | `/static/images/hero-bg-d7b69497f2-opt.webp` |
 | Админ | `гуляев_дм` / `123` |
+| Кэш логотипа на главной | `?v=10` |
 
-### 14.7 Деплой (типовой, май 2026)
+### 14.8 Деплой (типовой, май 2026)
 
 ```bash
 tar -czf spvt-deploy.tgz --exclude="__pycache__" --exclude=".venv" --exclude="spvt-admin" --exclude="*.db" --exclude="data" app requirements.txt deploy scripts
@@ -321,7 +330,7 @@ ssh root@45.144.220.51 "cd /opt/spvt && tar xzf spvt-deploy.tgz && bash deploy/p
 
 `post_deploy.sh` дополнительно: `remove_test_users.py` → `sync_employees_from_excel.py` (если есть xlsx) → `ensure_single_admin.py`.
 
-### 14.8 Переписка (Cursor)
+### 14.9 Переписка (Cursor)
 
 - Полный экспорт чата (май 2026): **`cursor_.md`** в корне репозитория.
 - Краткий лог сессии 15.05.2026: **`docs/CHAT_LOG_2026-05-15.md`**.
