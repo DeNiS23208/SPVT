@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.auth import parse_options, require_role
 from app.database import get_db
 from app.models import Question, User, UserRole
+from app.services.test_types import get_test_type_by_slug
 from app.schemas import (
     QuestionAdminOut,
     QuestionCreate,
@@ -28,8 +29,10 @@ ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/jpg", "image/webp"}
 
 
 def _question_to_admin_out(question: Question) -> QuestionAdminOut:
+    slug = question.test_type.slug if question.test_type else "gnvp"
     return QuestionAdminOut(
         id=question.id,
+        test_type=slug,
         text=question.text,
         question_type=question.question_type,
         options=parse_options(question.options_json),
@@ -149,7 +152,14 @@ def list_questions(
     _: Annotated[User, Depends(require_role(UserRole.admin))],
     db: Annotated[Session, Depends(get_db)],
 ):
-    questions = db.query(Question).order_by(Question.sort_order, Question.id).all()
+    from sqlalchemy.orm import joinedload
+
+    questions = (
+        db.query(Question)
+        .options(joinedload(Question.test_type))
+        .order_by(Question.sort_order, Question.id)
+        .all()
+    )
     return [_question_to_admin_out(question) for question in questions]
 
 
@@ -159,12 +169,16 @@ def create_question(
     _: Annotated[User, Depends(require_role(UserRole.admin))],
     db: Annotated[Session, Depends(get_db)],
 ):
+    tt = get_test_type_by_slug(db, payload.test_type)
+    if not tt:
+        raise HTTPException(status_code=400, detail="Неизвестный тип теста")
     question = Question(
+        test_type_id=tt.id,
         text=payload.text,
         question_type=payload.question_type,
         options_json=json.dumps(payload.options, ensure_ascii=False),
         correct_answer=payload.correct_answer,
-        is_critical=payload.is_critical,
+        is_critical=False,
         sort_order=payload.sort_order,
         is_active=payload.is_active,
     )
@@ -186,10 +200,12 @@ def update_question(
         raise HTTPException(status_code=404, detail="Вопрос не найден")
 
     data = payload.model_dump(exclude_none=True)
+    data.pop("is_critical", None)
     if "options" in data:
         question.options_json = json.dumps(data.pop("options"), ensure_ascii=False)
     for key, value in data.items():
         setattr(question, key, value)
+    question.is_critical = False
 
     db.commit()
     db.refresh(question)

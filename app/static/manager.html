@@ -3,25 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>SPVT — Кабинет начальника</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=40">
 </head>
-<body>
+<body class="page-manager">
   <div class="container">
     <div class="topbar">
       <div>
         <div class="badge">Администратор</div>
         <h1 style="margin:8px 0 0;font-size:1.3rem" id="user-name">Сводка по смене</h1>
       </div>
-      <button class="btn btn-secondary" id="logout-btn" type="button">Выйти</button>
+      <div class="topbar-actions">
+        <button class="btn btn-secondary" id="logout-btn" type="button">Выйти</button>
+      </div>
     </div>
 
     <div id="error-box" class="alert alert-error hidden"></div>
 
     <div class="card">
+      <div class="card-section-head">
+        <h2>Тесты</h2>
+        <p class="subtitle">Список тестов, которые видят работники при входе</p>
+      </div>
+      <div id="manager-tests-grid" class="tests-grid"></div>
+      <div class="manager-tests-actions">
+        <a class="btn btn-primary" href="/manager/tests/new">Добавить тест</a>
+      </div>
+    </div>
+
+    <div class="card">
       <label for="shift-date">Дата смены</label>
       <input id="shift-date" type="date">
-      <div style="display:grid;gap:10px;margin-top:8px">
+      <div class="manager-toolbar-grid">
         <button class="btn btn-primary" id="refresh-btn" type="button">Обновить</button>
         <button class="btn btn-success" id="export-btn" type="button">Выгрузить для Power BI (CSV)</button>
         <button class="btn btn-danger" id="reset-btn" type="button">Сбросить тесты за дату (для проверки)</button>
@@ -31,10 +45,22 @@
     <div class="card">
       <h2>Статистика</h2>
       <div class="grid-2" id="stats-grid">
-        <div class="stat"><div class="stat-value" id="stat-total">0</div><div class="stat-label">Всего работников</div></div>
-        <div class="stat"><div class="stat-value" id="stat-ready">0</div><div class="stat-label">Готовы</div></div>
-        <div class="stat"><div class="stat-value" id="stat-not-ready">0</div><div class="stat-label">Не готовы</div></div>
-        <div class="stat"><div class="stat-value" id="stat-not-started">0</div><div class="stat-label">Не проходили</div></div>
+        <a class="stat stat-clickable" href="/manager/workers?filter=all" data-filter="all">
+          <div class="stat-value" id="stat-total">0</div>
+          <div class="stat-label">Всего работников</div>
+        </a>
+        <a class="stat stat-clickable" href="/manager/workers?filter=ready" data-filter="ready">
+          <div class="stat-value" id="stat-ready">0</div>
+          <div class="stat-label">Готовы</div>
+        </a>
+        <a class="stat stat-clickable" href="/manager/workers?filter=not_ready" data-filter="not_ready">
+          <div class="stat-value" id="stat-not-ready">0</div>
+          <div class="stat-label">Не готовы</div>
+        </a>
+        <a class="stat stat-clickable" href="/manager/workers?filter=not_started" data-filter="not_started">
+          <div class="stat-value" id="stat-not-started">0</div>
+          <div class="stat-label">Не проходили</div>
+        </a>
       </div>
     </div>
 
@@ -45,8 +71,11 @@
           <thead>
             <tr>
               <th>ФИО</th>
+              <th>Тест</th>
+              <th>Билет</th>
               <th>Балл</th>
               <th>Статус</th>
+              <th class="th-actions"></th>
             </tr>
           </thead>
           <tbody id="attempts-body"></tbody>
@@ -76,8 +105,9 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/site_settings.js"></script>
+  <script src="/static/js/app.js?v=37"></script>
+  <script src="/static/js/site_settings.js?v=24"></script>
+  <script src="/static/js/manager_tests.js?v=33"></script>
   <script>
     const token = getToken();
     const role = localStorage.getItem("spvt_role");
@@ -93,11 +123,24 @@
 
     const shiftInput = document.getElementById("shift-date");
     const errorBox = document.getElementById("error-box");
-    shiftInput.valueAsDate = new Date();
+    const urlDate = new URLSearchParams(location.search).get("date");
+    shiftInput.valueAsDate = urlDate ? new Date(urlDate + "T12:00:00") : new Date();
 
     function formatDateParam() {
       return shiftInput.value;
     }
+
+    function updateStatLinks() {
+      const date = formatDateParam();
+      document.querySelectorAll("#stats-grid a.stat-clickable").forEach((link) => {
+        const filter = link.dataset.filter || "all";
+        const q = new URLSearchParams({ filter, date });
+        link.href = `/manager/workers?${q.toString()}`;
+      });
+    }
+
+    shiftInput.addEventListener("change", updateStatLinks);
+    updateStatLinks();
 
     async function loadDashboard() {
       hideError(errorBox);
@@ -120,14 +163,44 @@
       emptyNote.classList.add("hidden");
 
       data.attempts.forEach((item) => {
-        const st = statusLabel(item.status);
+        const st = attemptStatusDisplay(item);
         const tr = document.createElement("tr");
+        const resetBtn = item.can_reset
+          ? `<button type="button" class="btn-reset-attempt" data-attempt-id="${item.attempt_id}" title="Сбросить попытку" aria-label="Сбросить попытку">↻</button>`
+          : "";
         tr.innerHTML = `
-          <td>${item.employee_name}</td>
-          <td>${item.score_percent ?? "—"}%</td>
-          <td class="${st.className}">${st.text}</td>
+          <td>${escapeHtml(item.employee_name)}</td>
+          <td>${escapeHtml(item.test_title || "—")}</td>
+          <td>${escapeHtml(item.ticket_label || "—")}</td>
+          <td>${item.score_percent != null ? item.score_percent + "%" : "—"}</td>
+          <td class="${st.className}">${escapeHtml(st.text)}</td>
+          <td class="td-actions">${resetBtn}</td>
         `;
         tbody.appendChild(tr);
+      });
+
+      tbody.querySelectorAll(".btn-reset-attempt").forEach((btn) => {
+        btn.addEventListener("click", async () => {
+          const attemptId = btn.dataset.attemptId;
+          const row = btn.closest("tr");
+          const name = row?.querySelector("td")?.textContent?.trim() || "сотрудника";
+          const okReset = await confirmDialog({
+            title: "Сбросить попытку?",
+            message: `${name} сможет пройти тест заново.`,
+            confirmText: "Сбросить",
+            cancelText: "Отмена",
+            danger: true,
+          });
+          if (!okReset) return;
+          btn.disabled = true;
+          try {
+            await API.post(`/api/manager/attempts/${attemptId}/reset`, token, {});
+            await loadDashboard();
+          } catch (err) {
+            showError(errorBox, err.message);
+            btn.disabled = false;
+          }
+        });
       });
     }
 
@@ -162,7 +235,14 @@
 
     document.getElementById("reset-btn").addEventListener("click", async () => {
       const date = formatDateParam();
-      if (!confirm(`Сбросить все попытки теста за ${date}? Работники смогут пройти тест заново.`)) return;
+      const okBulkReset = await confirmDialog({
+        title: "Сбросить все попытки?",
+        message: `За дату ${date} будут удалены все попытки за смену. Работники смогут пройти тесты заново.`,
+        confirmText: "Сбросить",
+        cancelText: "Отмена",
+        danger: true,
+      });
+      if (!okBulkReset) return;
       try {
         const res = await fetch(`/api/manager/reset-attempt?shift_date=${encodeURIComponent(date)}`, {
           method: "POST",
@@ -177,6 +257,15 @@
       }
     });
 
+    function escapeHtml(text) {
+      return String(text ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    loadManagerTests(token, errorBox).catch((err) => showError(errorBox, err.message));
     loadDashboard().catch((err) => showError(errorBox, err.message));
   </script>
 </body>

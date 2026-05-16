@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ИНК-СЕРВИС — Предвахтовое тестирование</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=10">
+  <link rel="stylesheet" href="/static/css/style.css?v=12">
   <link rel="preload" as="image" href="{{ site.hero_background_url }}" fetchpriority="high">
   <link rel="preload" as="image" href="{{ site.logo_url }}" fetchpriority="high">
   <style id="server-site-paint">
@@ -59,12 +59,42 @@
           </div>
         </div>
 
+        <div id="login-help-block" class="login-form hidden">
+          <div class="form-field">
+            <label for="help-fio">Фамилия, имя, отчество</label>
+            <input id="help-fio" type="text" autocomplete="name" placeholder="Например: Иванов Сергей Петрович">
+          </div>
+          <button type="button" id="help-search-btn" class="btn btn-secondary btn-help-search">Найти</button>
+          <div id="help-pick-block" class="hidden">
+            <div class="form-field">
+              <label for="help-department">Ваше подразделение</label>
+              <div class="select-wrap">
+                <select id="help-department" disabled>
+                  <option value="">Выберите подразделение</option>
+                </select>
+              </div>
+            </div>
+            <div id="help-employee-field" class="form-field hidden">
+              <label for="help-employee">Уточните, кто вы</label>
+              <div class="select-wrap">
+                <select id="help-employee" disabled>
+                  <option value="">Выберите себя в списке</option>
+                </select>
+              </div>
+            </div>
+          </div>
+          <p class="login-hint" id="help-hint">Введите фамилию и имя — мы покажем подразделения, где есть совпадения.</p>
+        </div>
+
         <div class="form-field">
           <label for="password">Пароль</label>
           <input id="password" type="password" autocomplete="current-password" placeholder="Введите пароль">
         </div>
 
         <button id="login-btn" class="btn btn-primary btn-login" type="button">Войти</button>
+
+        <button type="button" id="login-help-open" class="login-staff-toggle">Не нашёл себя?</button>
+        <button type="button" id="login-help-close" class="login-staff-toggle login-staff-toggle-muted hidden">Вернуться к обычному входу</button>
       </div>
     </div>
 
@@ -75,8 +105,8 @@
     </aside>
   </div>
 
-  <script src="/static/js/app.js?v=10"></script>
-  <script src="/static/js/site_settings.js?v=10"></script>
-  <script src="/static/js/login.js?v=10"></script>
+  <script src="/static/js/app.js?v=12"></script>
+  <script src="/static/js/site_settings.js?v=12"></script>
+  <script src="/static/js/login.js?v=13"></script>
 </body>
 </html>

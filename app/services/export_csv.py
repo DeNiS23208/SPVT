@@ -28,7 +28,6 @@ def build_powerbi_csv(attempts: list[TestAttempt]) -> str:
             "Ответ работника",
             "Правильный ответ",
             "Ответ верный",
-            "Критический вопрос",
         ]
     )
 
@@ -66,7 +65,6 @@ def build_powerbi_csv(attempts: list[TestAttempt]) -> str:
                     "",
                     "",
                     "",
-                    "",
                 ]
             )
             continue
@@ -91,7 +89,6 @@ def build_powerbi_csv(attempts: list[TestAttempt]) -> str:
                     answer.answer_given,
                     answer.question.correct_answer,
                     "Да" if answer.is_correct else "Нет",
-                    "Да" if answer.question.is_critical else "Нет",
                 ]
             )
 
@@ -154,7 +151,11 @@ def build_powerbi_summary_csv(attempts: list[TestAttempt]) -> str:
 def fetch_attempts_for_export(db: Session, shift_date: str | None) -> list[TestAttempt]:
     query = (
         db.query(TestAttempt)
-        .options(joinedload(TestAttempt.user), joinedload(TestAttempt.answers).joinedload(Answer.question))
+        .options(
+            joinedload(TestAttempt.user),
+            joinedload(TestAttempt.test_type),
+            joinedload(TestAttempt.answers).joinedload(Answer.question),
+        )
         .filter(TestAttempt.finished_at.isnot(None))
         .order_by(TestAttempt.id)
     )

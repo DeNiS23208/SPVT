@@ -29,8 +29,7 @@ SELECT
     q.text AS "Вопрос",
     a.answer_given AS "Ответ работника",
     q.correct_answer AS "Правильный ответ",
-    CASE WHEN a.is_correct THEN 'Да' ELSE 'Нет' END AS "Ответ верный",
-    CASE WHEN q.is_critical THEN 'Да' ELSE 'Нет' END AS "Критический вопрос"
+    CASE WHEN a.is_correct THEN 'Да' ELSE 'Нет' END AS "Ответ верный"
 FROM test_attempts ta
 JOIN users u ON u.id = ta.user_id
 LEFT JOIN answers a ON a.attempt_id = ta.id
@@ -61,7 +60,6 @@ SELECT
         ELSE question_type::text
     END AS "Тип вопроса",
     correct_answer AS "Правильный ответ",
-    CASE WHEN is_critical THEN 'Да' ELSE 'Нет' END AS "Критический вопрос",
     sort_order AS "Порядок",
     CASE WHEN is_active THEN 'Да' ELSE 'Нет' END AS "Активен"
 FROM questions;
@@ -100,8 +98,7 @@ SELECT
     q.text AS "Вопрос",
     a.answer_given AS "Ответ работника",
     q.correct_answer AS "Правильный ответ",
-    CASE WHEN a.is_correct THEN 'Да' ELSE 'Нет' END AS "Ответ верный",
-    CASE WHEN q.is_critical THEN 'Да' ELSE 'Нет' END AS "Критический вопрос"
+    CASE WHEN a.is_correct THEN 'Да' ELSE 'Нет' END AS "Ответ верный"
 FROM answers a
 JOIN test_attempts ta ON ta.id = a.attempt_id
 JOIN users u ON u.id = ta.user_id

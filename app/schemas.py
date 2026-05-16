@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 from app.models import AttemptStatus, QuestionType, UserRole
 
@@ -11,6 +11,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
     role: UserRole
     full_name: str
+    position: str | None = None
 
 
 class UserInfo(BaseModel):
@@ -18,6 +19,7 @@ class UserInfo(BaseModel):
     username: str
     role: UserRole
     full_name: str
+    position: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -25,6 +27,12 @@ class UserInfo(BaseModel):
 class DepartmentWorkerOut(BaseModel):
     username: str
     full_name: str
+
+
+class WorkerLookupOut(BaseModel):
+    username: str
+    full_name: str
+    department: str
 
 
 class QuestionOut(BaseModel):
@@ -42,7 +50,89 @@ class AnswerSubmit(BaseModel):
     answer: str
 
 
+class TestCatalogItemOut(BaseModel):
+    slug: str
+    title: str
+    description: str
+    shift_date: str
+    can_start: bool
+    has_attempt_today: bool
+    passed_today: bool | None = None
+    status_today: AttemptStatus | None = None
+    score_percent_today: float | None = None
+    last_passed: bool | None = None
+    last_status: AttemptStatus | None = None
+    last_score_percent: float | None = None
+    last_finished_at: datetime | None = None
+    last_correct_count: int | None = None
+    last_total_questions: int | None = None
+
+    @field_serializer("last_finished_at")
+    @classmethod
+    def serialize_last_finished_at(cls, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat().replace("+00:00", "Z")
+
+
+class TestCatalogOut(BaseModel):
+    tests: list[TestCatalogItemOut]
+
+
+class TestTypeAdminOut(BaseModel):
+    id: int
+    slug: str
+    title: str
+    description: str
+    sort_order: int
+    is_active: bool
+    tickets_count: int = 0
+    questions_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+class ManagerQuestionOut(BaseModel):
+    id: int
+    text: str
+    question_type: QuestionType
+    options: list[str]
+    correct_answer: str
+    sort_order: int
+
+
+class TestTicketOut(BaseModel):
+    id: int
+    title: str
+    sort_order: int
+    questions: list[ManagerQuestionOut] = Field(default_factory=list)
+
+
+class TestTicketCreate(BaseModel):
+    title: str = ""
+
+
+class ManagerQuestionCreate(BaseModel):
+    text: str
+    options: list[str] = Field(default_factory=list)
+    correct_answer: str
+
+
+class TestTypeCreate(BaseModel):
+    title: str = Field(min_length=2, max_length=128, description="Название теста")
+    description: str = Field(min_length=1, max_length=2000, description="Описание теста")
+
+
+class TestTypePatch(BaseModel):
+    is_active: bool
+
+
 class TestSubmitRequest(BaseModel):
+    test_type: str = Field(min_length=1, description="Код теста, например gnvp или pdd")
     answers: list[AnswerSubmit] = Field(min_length=1)
 
 
@@ -58,14 +148,57 @@ class AttemptSummary(BaseModel):
     attempt_id: int
     employee_name: str
     username: str
+    test_title: str
+    ticket_label: str = ""
     shift_date: str
     started_at: datetime
     finished_at: datetime | None
     score_percent: float | None
     passed: bool | None
     status: AttemptStatus
+    reset_at: datetime | None = None
+    can_reset: bool = True
 
     model_config = {"from_attributes": True}
+
+
+class WorkerTestLine(BaseModel):
+    test_slug: str = ""
+    test_title: str
+    status: AttemptStatus
+    score_percent: float | None = None
+    ticket_label: str = ""
+    reset_at: datetime | None = None
+
+
+class WorkerShiftEntry(BaseModel):
+    user_id: int
+    full_name: str
+    username: str
+    position: str = ""
+    department: str = ""
+    tests: list[WorkerTestLine] = Field(default_factory=list)
+
+
+class WorkerShiftListOut(BaseModel):
+    shift_date: str
+    filter: str
+    title: str
+    count: int
+    page: int
+    page_size: int
+    workers: list[WorkerShiftEntry]
+
+
+class WorkerFilterTestOption(BaseModel):
+    slug: str
+    title: str
+
+
+class WorkerFilterOptionsOut(BaseModel):
+    departments: list[str]
+    positions: list[str]
+    tests: list[WorkerFilterTestOption]
 
 
 class DashboardStats(BaseModel):
@@ -101,6 +234,7 @@ class SiteSettingsUpdate(BaseModel):
 
 class QuestionAdminOut(BaseModel):
     id: int
+    test_type: str
     text: str
     question_type: QuestionType
     options: list[str]
@@ -120,6 +254,7 @@ class QuestionCreate(BaseModel):
     is_critical: bool = False
     sort_order: int = 0
     is_active: bool = True
+    test_type: str = "gnvp"
 
 
 class QuestionUpdate(BaseModel):

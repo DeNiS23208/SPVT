@@ -52,11 +52,11 @@ class QuestionsTab(QWidget):
         toolbar.addStretch(1)
         layout.addLayout(toolbar)
 
-        self.table = QTableWidget(0, 6)
+        self.table = QTableWidget(0, 5)
         self.table.setHorizontalHeaderLabels(
-            ["ID", "Порядок", "Тип", "Критич.", "Активен", "Текст"]
+            ["ID", "Порядок", "Тип", "Активен", "Текст"]
         )
-        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         layout.addWidget(self.table)
@@ -74,7 +74,6 @@ class QuestionsTab(QWidget):
                 str(item.get("id", "")),
                 str(item.get("sort_order", "")),
                 TYPE_LABELS.get(item.get("question_type"), item.get("question_type", "")),
-                "Да" if item.get("is_critical") else "Нет",
                 "Да" if item.get("is_active", True) else "Нет",
                 item.get("text", ""),
             ]

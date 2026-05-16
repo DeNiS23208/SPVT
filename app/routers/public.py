@@ -5,8 +5,9 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import User, UserRole
-from app.schemas import DepartmentWorkerOut, SiteSettingsOut
+from app.schemas import DepartmentWorkerOut, SiteSettingsOut, WorkerLookupOut
 from app.services.site_settings import get_all_settings
+from app.services.worker_lookup import find_workers_by_name
 
 router = APIRouter(prefix="/api/public", tags=["public"])
 
@@ -46,3 +47,19 @@ def list_department_workers(
     if not workers:
         raise HTTPException(status_code=404, detail="В этом подразделении нет сотрудников")
     return [DepartmentWorkerOut(username=w.username, full_name=w.full_name) for w in workers]
+
+
+@router.get("/find-workers", response_model=list[WorkerLookupOut])
+def find_workers(
+    db: Annotated[Session, Depends(get_db)],
+    q: str = Query(min_length=2, max_length=120, description="Фамилия, имя или полное ФИО"),
+):
+    workers = find_workers_by_name(db, q)
+    return [
+        WorkerLookupOut(
+            username=w.username,
+            full_name=w.full_name,
+            department=w.department or "",
+        )
+        for w in workers
+    ]

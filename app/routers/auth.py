@@ -33,6 +33,7 @@ def login(
         access_token=token,
         role=user.role,
         full_name=user.full_name,
+        position=user.position,
     )
 
 

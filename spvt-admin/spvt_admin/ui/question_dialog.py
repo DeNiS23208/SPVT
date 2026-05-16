@@ -40,8 +40,6 @@ class QuestionDialog(QDialog):
         self.sort_spin = QSpinBox()
         self.sort_spin.setRange(0, 9999)
         self.sort_spin.setValue(int(self._question.get("sort_order", 0)))
-        self.critical_check = QCheckBox("Критический вопрос")
-        self.critical_check.setChecked(bool(self._question.get("is_critical", False)))
         self.active_check = QCheckBox("Активен")
         self.active_check.setChecked(bool(self._question.get("is_active", True)))
 
@@ -51,7 +49,6 @@ class QuestionDialog(QDialog):
         form.addRow("Варианты", self.options_edit)
         form.addRow("Правильный ответ", self.answer_edit)
         form.addRow("Порядок", self.sort_spin)
-        form.addRow("", self.critical_check)
         form.addRow("", self.active_check)
 
         buttons = QDialogButtonBox(
@@ -83,7 +80,6 @@ class QuestionDialog(QDialog):
             "question_type": qtype,
             "options": options,
             "correct_answer": self.answer_edit.text().strip(),
-            "is_critical": self.critical_check.isChecked(),
             "sort_order": self.sort_spin.value(),
             "is_active": self.active_check.isChecked(),
         }

@@ -25,6 +25,7 @@ class AttemptStatus(str, enum.Enum):
     in_progress = "in_progress"
     ready = "ready"
     not_ready = "not_ready"
+    reset = "reset"
 
 
 class User(Base):
@@ -41,10 +42,39 @@ class User(Base):
     attempts: Mapped[list["TestAttempt"]] = relationship(back_populates="user")
 
 
+class TestType(Base):
+    __tablename__ = "test_types"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    slug: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(128))
+    description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    questions: Mapped[list["Question"]] = relationship(back_populates="test_type")
+    attempts: Mapped[list["TestAttempt"]] = relationship(back_populates="test_type")
+    tickets: Mapped[list["TestTicket"]] = relationship(back_populates="test_type")
+
+
+class TestTicket(Base):
+    __tablename__ = "test_tickets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    test_type_id: Mapped[int] = mapped_column(ForeignKey("test_types.id"), index=True)
+    title: Mapped[str] = mapped_column(String(128))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    test_type: Mapped["TestType"] = relationship(back_populates="tickets")
+    questions: Mapped[list["Question"]] = relationship(back_populates="ticket")
+
+
 class Question(Base):
     __tablename__ = "questions"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    test_type_id: Mapped[int] = mapped_column(ForeignKey("test_types.id"), index=True)
+    ticket_id: Mapped[Optional[int]] = mapped_column(ForeignKey("test_tickets.id"), nullable=True, index=True)
     text: Mapped[str] = mapped_column(Text)
     question_type: Mapped[QuestionType] = mapped_column(Enum(QuestionType))
     options_json: Mapped[str] = mapped_column(Text, default="[]")
@@ -53,12 +83,17 @@ class Question(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
+    test_type: Mapped["TestType"] = relationship(back_populates="questions")
+    ticket: Mapped[Optional["TestTicket"]] = relationship(back_populates="questions")
+
 
 class TestAttempt(Base):
     __tablename__ = "test_attempts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    test_type_id: Mapped[int] = mapped_column(ForeignKey("test_types.id"), index=True)
+    ticket_id: Mapped[Optional[int]] = mapped_column(ForeignKey("test_tickets.id"), nullable=True, index=True)
     shift_date: Mapped[str] = mapped_column(String(10), index=True)
     started_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     finished_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
@@ -67,8 +102,11 @@ class TestAttempt(Base):
     status: Mapped[AttemptStatus] = mapped_column(
         Enum(AttemptStatus), default=AttemptStatus.in_progress
     )
+    reset_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="attempts")
+    test_type: Mapped["TestType"] = relationship(back_populates="attempts")
+    ticket: Mapped[Optional["TestTicket"]] = relationship()
     answers: Mapped[list["Answer"]] = relationship(back_populates="attempt")
 
 

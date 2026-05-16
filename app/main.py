@@ -2,6 +2,15 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import FileResponse
+
+_HTML_NO_CACHE = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+}
+
+
+def _html_page(path: Path) -> FileResponse:
+    return FileResponse(path, headers=_HTML_NO_CACHE)
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -55,9 +64,29 @@ def index(request: Request, db: Session = Depends(get_db)):
 
 @app.get("/worker")
 def worker_page():
-    return FileResponse(STATIC_DIR / "worker.html")
+    return _html_page(STATIC_DIR / "worker.html")
+
+
+@app.get("/worker/test")
+def worker_test_page():
+    return _html_page(STATIC_DIR / "worker_test.html")
 
 
 @app.get("/manager")
 def manager_page():
-    return FileResponse(STATIC_DIR / "manager.html")
+    return _html_page(STATIC_DIR / "manager.html")
+
+
+@app.get("/manager/tests/new")
+def manager_test_new_page():
+    return _html_page(STATIC_DIR / "manager_test_new.html")
+
+
+@app.get("/manager/tests/questions")
+def manager_test_questions_page():
+    return _html_page(STATIC_DIR / "manager_test_questions.html")
+
+
+@app.get("/manager/workers")
+def manager_workers_page():
+    return _html_page(STATIC_DIR / "manager_workers.html")
