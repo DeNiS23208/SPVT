@@ -117,6 +117,28 @@ def ensure_test_type_schema() -> None:
                 conn.execute(text(f"ALTER TABLE {table} ADD COLUMN test_type_id INTEGER"))
 
 
+def ensure_test_type_ticket_time_limit() -> None:
+    """Лимит времени (минут) на прохождение одного билета."""
+    inspector = inspect(engine)
+    if "test_types" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("test_types")}
+    if "ticket_time_limit_minutes" in columns:
+        return
+    with engine.begin() as conn:
+        if is_postgresql():
+            conn.execute(
+                text(
+                    "ALTER TABLE test_types ADD COLUMN IF NOT EXISTS "
+                    "ticket_time_limit_minutes INTEGER"
+                )
+            )
+        else:
+            conn.execute(
+                text("ALTER TABLE test_types ADD COLUMN ticket_time_limit_minutes INTEGER")
+            )
+
+
 def ensure_test_tickets_schema() -> None:
     """Билеты (наборы вопросов) внутри теста."""
     inspector = inspect(engine)

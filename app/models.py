@@ -51,6 +51,7 @@ class TestType(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    ticket_time_limit_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     questions: Mapped[list["Question"]] = relationship(back_populates="test_type")
     attempts: Mapped[list["TestAttempt"]] = relationship(back_populates="test_type")

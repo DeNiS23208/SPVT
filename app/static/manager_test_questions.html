@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>SPVT — Вопросы теста</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=30">
+  <link rel="stylesheet" href="/static/css/style.css?v=44">
 </head>
 <body class="page-manager">
   <div class="container">
@@ -16,6 +16,9 @@
         <p class="subtitle" style="margin:6px 0 0" id="test-subtitle"></p>
       </div>
       <div class="topbar-actions">
+        <button type="button" id="ticket-time-btn" class="btn btn-secondary" title="Лимит времени на один билет">
+          Время прохождения билета
+        </button>
         <button type="button" id="export-excel-btn" class="btn btn-primary">Выгрузить в Excel</button>
         <a class="btn btn-secondary" href="/manager">← К кабинету</a>
       </div>
@@ -37,7 +40,26 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=28"></script>
-  <script src="/static/js/manager_test_questions.js?v=28"></script>
+  <div id="ticket-time-modal" class="spvt-confirm-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ticket-time-title">
+    <div class="spvt-confirm-dialog spvt-form-dialog">
+      <h2 class="spvt-confirm-title" id="ticket-time-title">Время прохождения билета</h2>
+      <p class="spvt-confirm-message">Сколько минут даётся работнику на один билет (все вопросы выбранного билета).</p>
+      <label class="ticket-time-unlimited-row">
+        <input type="checkbox" id="ticket-time-unlimited">
+        <span>Без ограничения по времени</span>
+      </label>
+      <div class="form-field" id="ticket-time-field">
+        <label for="ticket-time-minutes">Минут на билет</label>
+        <input type="number" id="ticket-time-minutes" min="1" max="480" step="1" value="30">
+      </div>
+      <div class="spvt-confirm-actions">
+        <button type="button" class="btn btn-secondary" id="ticket-time-cancel">Отмена</button>
+        <button type="button" class="btn btn-primary" id="ticket-time-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/app.js?v=38"></script>
+  <script src="/static/js/manager_test_questions.js?v=30"></script>
 </body>
 </html>

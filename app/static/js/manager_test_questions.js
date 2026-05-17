@@ -20,8 +20,16 @@
   const ticketsEmpty = document.getElementById("tickets-empty");
   const addTicketBtn = document.getElementById("add-ticket-btn");
   const exportExcelBtn = document.getElementById("export-excel-btn");
+  const ticketTimeBtn = document.getElementById("ticket-time-btn");
+  const ticketTimeModal = document.getElementById("ticket-time-modal");
+  const ticketTimeUnlimited = document.getElementById("ticket-time-unlimited");
+  const ticketTimeField = document.getElementById("ticket-time-field");
+  const ticketTimeMinutes = document.getElementById("ticket-time-minutes");
+  const ticketTimeSave = document.getElementById("ticket-time-save");
+  const ticketTimeCancel = document.getElementById("ticket-time-cancel");
 
   const expandedTickets = new Set();
+  let testInfo = null;
   /** @type {{ ticketId: number, questionId: number } | null} */
   let editingQuestion = null;
   let tickets = [];
@@ -40,10 +48,51 @@
     hideError(errorBox);
   }
 
-  async function loadTestInfo() {
-    const test = await API.get(apiBase, token);
+  function formatTicketTimeHint(minutes) {
+    if (minutes == null || minutes < 1) return "без лимита по времени";
+    const n = Number(minutes);
+    const mod10 = n % 10;
+    const mod100 = n % 100;
+    let word = "минут";
+    if (mod10 === 1 && mod100 !== 11) word = "минута";
+    else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) word = "минуты";
+    return `${n} ${word} на билет`;
+  }
+
+  function updateTestSubtitle() {
+    if (!testInfo) return;
+    const limit = formatTicketTimeHint(testInfo.ticket_time_limit_minutes);
     document.getElementById("test-subtitle").textContent =
-      `${test.title} · всего ${test.questions_count} вопр.`;
+      `${testInfo.title} · всего ${testInfo.questions_count} вопр. · ${limit}`;
+  }
+
+  async function loadTestInfo() {
+    testInfo = await API.get(apiBase, token);
+    updateTestSubtitle();
+  }
+
+  function syncTicketTimeForm() {
+    const unlimited = ticketTimeUnlimited.checked;
+    ticketTimeField.classList.toggle("is-disabled", unlimited);
+    ticketTimeMinutes.disabled = unlimited;
+  }
+
+  function openTicketTimeModal() {
+    const current = testInfo?.ticket_time_limit_minutes;
+    if (current == null || current < 1) {
+      ticketTimeUnlimited.checked = true;
+      ticketTimeMinutes.value = "30";
+    } else {
+      ticketTimeUnlimited.checked = false;
+      ticketTimeMinutes.value = String(current);
+    }
+    syncTicketTimeForm();
+    ticketTimeModal.classList.remove("hidden");
+    ticketTimeMinutes.focus();
+  }
+
+  function closeTicketTimeModal() {
+    ticketTimeModal.classList.add("hidden");
   }
 
   async function loadTickets() {
@@ -267,6 +316,13 @@
           </button>
           <h3 class="ticket-title">${escapeHtml(ticket.title)}</h3>
           <span class="ticket-meta">${ticket.questions.length} вопр.</span>
+          <button
+            type="button"
+            class="btn-link-delete ticket-delete-btn"
+            data-delete-ticket="${ticket.id}"
+            title="Удалить билет"
+            aria-label="Удалить билет"
+          >×</button>
         </header>
         <div class="ticket-body${isOpen ? "" : " hidden"}">
           <ul class="ticket-questions">${questionsHtml}</ul>
@@ -324,9 +380,47 @@
       });
     });
 
+    ticketsList.querySelectorAll("[data-delete-ticket]").forEach((btn) => {
+      btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        const ticketId = Number(btn.dataset.deleteTicket);
+        const ticket = tickets.find((t) => t.id === ticketId);
+        const title = ticket?.title || "билет";
+        const qCount = ticket?.questions?.length || 0;
+        const ok = await confirmDialog({
+          title: "Удалить билет?",
+          message:
+            qCount > 0
+              ? `«${title}» и все ${qCount} вопрос(ов) в нём будут удалены безвозвратно.`
+              : `«${title}» будет удалён.`,
+          confirmText: "Удалить",
+          cancelText: "Отмена",
+          danger: true,
+        });
+        if (!ok) return;
+        hideError(errorBox);
+        if (editingQuestion?.ticketId === ticketId) editingQuestion = null;
+        expandedTickets.delete(ticketId);
+        try {
+          await API.del(`${apiBase}/tickets/${ticketId}`, token);
+          showSuccess("Билет удалён");
+          await loadTickets();
+        } catch (err) {
+          showError(errorBox, err.message);
+        }
+      });
+    });
+
     ticketsList.querySelectorAll("[data-delete-q]").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        if (!confirm("Удалить этот вопрос?")) return;
+        const ok = await confirmDialog({
+          title: "Удалить вопрос?",
+          message: "Вопрос будет удалён безвозвратно.",
+          confirmText: "Удалить",
+          cancelText: "Отмена",
+          danger: true,
+        });
+        if (!ok) return;
         hideError(errorBox);
         const qid = Number(btn.dataset.deleteQ);
         if (editingQuestion?.questionId === qid) editingQuestion = null;
@@ -354,6 +448,49 @@
       showError(errorBox, err.message);
     } finally {
       addTicketBtn.disabled = false;
+    }
+  });
+
+  ticketTimeBtn.addEventListener("click", () => {
+    hideError(errorBox);
+    openTicketTimeModal();
+  });
+
+  ticketTimeUnlimited.addEventListener("change", syncTicketTimeForm);
+
+  ticketTimeCancel.addEventListener("click", closeTicketTimeModal);
+
+  ticketTimeModal.addEventListener("click", (e) => {
+    if (e.target === ticketTimeModal) closeTicketTimeModal();
+  });
+
+  ticketTimeSave.addEventListener("click", async () => {
+    hideError(errorBox);
+    let payload;
+    if (ticketTimeUnlimited.checked) {
+      payload = { ticket_time_limit_minutes: null };
+    } else {
+      const minutes = parseInt(ticketTimeMinutes.value, 10);
+      if (!Number.isFinite(minutes) || minutes < 1 || minutes > 480) {
+        showError(errorBox, "Укажите время от 1 до 480 минут или включите «Без ограничения».");
+        return;
+      }
+      payload = { ticket_time_limit_minutes: minutes };
+    }
+    ticketTimeSave.disabled = true;
+    try {
+      testInfo = await API.patch(apiBase, token, payload);
+      updateTestSubtitle();
+      closeTicketTimeModal();
+      showSuccess(
+        payload.ticket_time_limit_minutes == null
+          ? "Ограничение по времени снято."
+          : `Установлено: ${formatTicketTimeHint(payload.ticket_time_limit_minutes)}.`
+      );
+    } catch (err) {
+      showError(errorBox, err.message);
+    } finally {
+      ticketTimeSave.disabled = false;
     }
   });
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>SPVT — Сотрудники</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=39">
+  <link rel="stylesheet" href="/static/css/style.css?v=42">
 </head>
 <body class="page-manager">
   <div class="container">
@@ -25,7 +25,16 @@
       <div class="workers-filters-grid">
         <div class="form-field">
           <label for="workers-filter-date">Дата смены</label>
-          <input id="workers-filter-date" type="date">
+          <div class="workers-date-wrap">
+            <input id="workers-filter-date" type="date">
+            <button
+              type="button"
+              class="workers-date-clear"
+              id="workers-date-clear"
+              title="Показать за всё время"
+              aria-label="Сбросить дату — за всё время"
+            >×</button>
+          </div>
         </div>
         <div class="form-field">
           <label for="workers-search">Поиск по ФИО</label>
@@ -47,6 +56,15 @@
           <label for="workers-filter-test">Тест</label>
           <select id="workers-filter-test">
             <option value="">Все тесты</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="workers-filter-status">Результат</label>
+          <select id="workers-filter-status">
+            <option value="all">Все</option>
+            <option value="ready">Сдали</option>
+            <option value="not_ready">Не сдали</option>
+            <option value="not_started">Не начинали</option>
           </select>
         </div>
       </div>
@@ -73,7 +91,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=36"></script>
-  <script src="/static/js/manager_workers.js?v=35"></script>
+  <script src="/static/js/app.js?v=38"></script>
+  <script src="/static/js/manager_workers.js?v=38"></script>
 </body>
 </html>

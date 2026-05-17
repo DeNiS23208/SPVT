@@ -90,6 +90,7 @@ class TestTypeAdminOut(BaseModel):
     description: str
     sort_order: int
     is_active: bool
+    ticket_time_limit_minutes: int | None = None
     tickets_count: int = 0
     questions_count: int = 0
 
@@ -128,7 +129,8 @@ class TestTypeCreate(BaseModel):
 
 
 class TestTypePatch(BaseModel):
-    is_active: bool
+    is_active: bool | None = None
+    ticket_time_limit_minutes: int | None = None
 
 
 class TestSubmitRequest(BaseModel):
@@ -168,6 +170,8 @@ class WorkerTestLine(BaseModel):
     status: AttemptStatus
     score_percent: float | None = None
     ticket_label: str = ""
+    shift_date: str = ""
+    finished_at: datetime | None = None
     reset_at: datetime | None = None
 
 
@@ -210,6 +214,9 @@ class DashboardStats(BaseModel):
     in_progress: int
     not_started: int
     attempts: list[AttemptSummary]
+    results_page: int = 1
+    results_page_size: int = 10
+    results_people_count: int = 0
 
 
 class SiteSettingsOut(BaseModel):

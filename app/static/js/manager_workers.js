@@ -9,18 +9,26 @@
   const PAGE_SIZE = 50;
 
   const params = new URLSearchParams(location.search);
-  const filter = (params.get("filter") || "all").trim().toLowerCase();
+  const VALID_STATUS_FILTERS = new Set(["all", "ready", "not_ready", "not_started"]);
   let page = Math.max(1, parseInt(params.get("page") || "1", 10) || 1);
 
   const errorBox = document.getElementById("error-box");
   const backLink = document.getElementById("back-link");
   const paginationEl = document.getElementById("workers-pagination");
   const dateInput = document.getElementById("workers-filter-date");
+  const dateClearBtn = document.getElementById("workers-date-clear");
+  const dateWrap = dateInput.closest(".workers-date-wrap");
   const searchInput = document.getElementById("workers-search");
   const deptSelect = document.getElementById("workers-filter-department");
   const posSelect = document.getElementById("workers-filter-position");
   const testSelect = document.getElementById("workers-filter-test");
+  const statusSelect = document.getElementById("workers-filter-status");
   const resetFiltersBtn = document.getElementById("workers-reset-filters");
+
+  function getStatusFilter() {
+    const value = (statusSelect.value || "all").trim().toLowerCase();
+    return VALID_STATUS_FILTERS.has(value) ? value : "all";
+  }
 
   function todayIso() {
     const d = new Date();
@@ -30,22 +38,39 @@
     return `${y}-${m}-${day}`;
   }
 
-  function getShiftDate() {
-    return dateInput.value || todayIso();
+  function isAllTimeMode() {
+    return dateWrap.classList.contains("is-all-time");
+  }
+
+  function setAllTimeMode(on) {
+    dateWrap.classList.toggle("is-all-time", on);
+  }
+
+  function getShiftDateParam() {
+    return isAllTimeMode() ? "all" : dateInput.value || todayIso();
   }
 
   function updateBackLink() {
-    backLink.href = `/manager?date=${encodeURIComponent(getShiftDate())}`;
+    const datePart = isAllTimeMode() ? "all" : encodeURIComponent(dateInput.value || todayIso());
+    backLink.href = `/manager?date=${datePart}`;
   }
 
-  const urlDate = (params.get("date") || "").trim();
-  dateInput.value = urlDate || todayIso();
+  const urlDate = (params.get("date") || "").trim().toLowerCase();
+  if (urlDate === "all") {
+    dateInput.value = "";
+    setAllTimeMode(true);
+  } else {
+    dateInput.value = urlDate || todayIso();
+    setAllTimeMode(false);
+  }
   updateBackLink();
 
   searchInput.value = params.get("q") || "";
   deptSelect.value = params.get("department") || "";
   posSelect.value = params.get("position") || "";
   testSelect.value = params.get("test") || "";
+  const urlFilter = (params.get("filter") || "all").trim().toLowerCase();
+  statusSelect.value = VALID_STATUS_FILTERS.has(urlFilter) ? urlFilter : "all";
 
   let searchTimer = null;
   let filterOptionsLoaded = false;
@@ -69,7 +94,11 @@
     const st = attemptStatusDisplay(test);
     const score = test.score_percent != null ? ` · ${test.score_percent}%` : "";
     const ticket = test.ticket_label ? ` · билет ${escapeHtml(test.ticket_label)}` : "";
-    return `<div class="worker-test-line"><span class="${st.className}">${escapeHtml(st.text)}</span> — ${escapeHtml(test.test_title)}${score}${ticket}</div>`;
+    const shift =
+      test.shift_date && test.shift_date !== "all"
+        ? ` · ${escapeHtml(formatShiftDate(test.shift_date))}`
+        : "";
+    return `<div class="worker-test-line"><span class="${st.className}">${escapeHtml(st.text)}</span> — ${escapeHtml(test.test_title)}${shift}${score}${ticket}</div>`;
   }
 
   function renderTests(tests) {
@@ -89,8 +118,12 @@
   }
 
   function buildQuery() {
-    const q = new URLSearchParams({ filter, page: String(page), page_size: String(PAGE_SIZE) });
-    q.set("shift_date", getShiftDate());
+    const q = new URLSearchParams({
+      filter: getStatusFilter(),
+      page: String(page),
+      page_size: String(PAGE_SIZE),
+    });
+    q.set("shift_date", getShiftDateParam());
     const f = currentFilters();
     if (f.q) q.set("q", f.q);
     if (f.department) q.set("department", f.department);
@@ -101,9 +134,9 @@
 
   function syncUrl() {
     const q = new URLSearchParams(location.search);
-    q.set("filter", filter);
+    q.set("filter", getStatusFilter());
     q.set("page", String(page));
-    q.set("date", getShiftDate());
+    q.set("date", getShiftDateParam());
 
     const f = currentFilters();
     if (f.q) q.set("q", f.q);
@@ -208,8 +241,12 @@
     const data = await API.get(`/api/manager/workers?${buildQuery().toString()}`, token);
 
     page = data.page || page;
-    if (data.shift_date && dateInput.value !== data.shift_date) {
+    if (data.shift_date === "all") {
+      dateInput.value = "";
+      setAllTimeMode(true);
+    } else if (data.shift_date) {
       dateInput.value = data.shift_date;
+      setAllTimeMode(false);
     }
     updateBackLink();
     syncUrl();
@@ -224,7 +261,9 @@
 
     document.getElementById("page-title").textContent = data.title;
     document.getElementById("page-subtitle").textContent =
-      `Смена ${formatShiftDate(data.shift_date)}`;
+      data.shift_date === "all"
+        ? "За всё время"
+        : `Смена ${formatShiftDate(data.shift_date)}`;
 
     const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
     const to = Math.min(page * pageSize, total);
@@ -272,17 +311,31 @@
     searchTimer = setTimeout(applyFiltersFromPageOne, 350);
   });
 
-  dateInput.addEventListener("change", applyFiltersFromPageOne);
+  dateInput.addEventListener("change", () => {
+    if (dateInput.value) {
+      setAllTimeMode(false);
+    }
+    applyFiltersFromPageOne();
+  });
+
+  dateClearBtn.addEventListener("click", () => {
+    dateInput.value = "";
+    setAllTimeMode(true);
+    applyFiltersFromPageOne();
+  });
   deptSelect.addEventListener("change", applyFiltersFromPageOne);
   posSelect.addEventListener("change", applyFiltersFromPageOne);
   testSelect.addEventListener("change", applyFiltersFromPageOne);
+  statusSelect.addEventListener("change", applyFiltersFromPageOne);
 
   resetFiltersBtn.addEventListener("click", () => {
     dateInput.value = todayIso();
+    setAllTimeMode(false);
     searchInput.value = "";
     deptSelect.value = "";
     posSelect.value = "";
     testSelect.value = "";
+    statusSelect.value = "all";
     updateBackLink();
     applyFiltersFromPageOne();
   });

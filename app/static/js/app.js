@@ -153,7 +153,17 @@ function attemptStatusDisplay(item) {
       className: "status-reset",
     };
   }
-  return statusLabel(item.status);
+  const base = statusLabel(item.status);
+  if (
+    (item.status === "ready" || item.status === "not_ready") &&
+    item.finished_at
+  ) {
+    const when = formatDateIrkutskShortWithTime(item.finished_at);
+    if (when) {
+      return { text: `${base.text}, ${when}`, className: base.className };
+    }
+  }
+  return base;
 }
 
 function showError(el, message) {

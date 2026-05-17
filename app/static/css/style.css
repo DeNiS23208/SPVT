@@ -792,6 +792,35 @@ body textarea:focus {
   min-width: 120px;
 }
 
+.spvt-form-dialog .form-field {
+  margin-bottom: 16px;
+}
+
+.spvt-form-dialog .form-field input[type="number"] {
+  margin-bottom: 0;
+}
+
+.ticket-time-unlimited-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 16px;
+  color: #e2e8f0;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.ticket-time-unlimited-row input {
+  width: auto;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+#ticket-time-field.is-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .btn-danger {
   background: linear-gradient(135deg, #f87171, var(--danger));
   color: #450a0a;
@@ -879,6 +908,68 @@ a.stat-clickable:hover {
 .workers-filters-reset {
   width: 100%;
   max-width: 220px;
+}
+
+.workers-date-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.workers-date-wrap input[type="date"] {
+  width: 100%;
+  margin-bottom: 0;
+  padding-right: 4.5rem;
+  box-sizing: border-box;
+}
+
+.workers-date-clear {
+  position: absolute;
+  right: 2.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #ef4444;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1;
+  background: rgba(15, 23, 42, 0.85);
+}
+
+.workers-date-clear:hover {
+  color: #f87171;
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.workers-date-clear:active {
+  background: rgba(239, 68, 68, 0.35);
+}
+
+.workers-date-wrap.is-all-time .workers-date-clear {
+  display: none;
+}
+
+.workers-date-wrap.is-all-time input[type="date"] {
+  color: var(--muted);
+  font-style: italic;
+  padding-right: 2.75rem;
+}
+
+.workers-date-wrap.is-all-time input[type="date"]::-webkit-datetime-edit {
+  color: var(--muted);
+}
+
+.workers-date-wrap.is-all-time input[type="date"]::placeholder {
+  color: var(--muted);
 }
 
 .workers-pagination {
@@ -1288,6 +1379,11 @@ body.page-home .home-logo-panel::after {
   font-size: 0.85rem;
   color: #94a3b8;
   white-space: nowrap;
+}
+
+.ticket-delete-btn {
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
 .ticket-body {

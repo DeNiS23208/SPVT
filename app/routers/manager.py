@@ -74,6 +74,7 @@ def _test_type_admin_out(db: Session, test_type: TestType) -> TestTypeAdminOut:
         description=test_type.description or "",
         sort_order=test_type.sort_order,
         is_active=test_type.is_active,
+        ticket_time_limit_minutes=test_type.ticket_time_limit_minutes,
         tickets_count=int(t_count),
         questions_count=int(q_count),
     )
@@ -134,7 +135,14 @@ def patch_test_type(
     test_type = get_test_type_by_slug(db, slug, active_only=False)
     if not test_type:
         raise HTTPException(status_code=404, detail="Тест не найден")
-    test_type.is_active = payload.is_active
+    updates = payload.model_dump(exclude_unset=True)
+    if not updates:
+        raise HTTPException(status_code=400, detail="Нет данных для обновления")
+    limit = updates.get("ticket_time_limit_minutes")
+    if limit is not None and (limit < 1 or limit > 480):
+        raise HTTPException(status_code=400, detail="Время на билет: от 1 до 480 минут")
+    for key, value in updates.items():
+        setattr(test_type, key, value)
     db.commit()
     db.refresh(test_type)
     return _test_type_admin_out(db, test_type)
@@ -268,6 +276,40 @@ def create_test_ticket(
     db.commit()
     db.refresh(ticket)
     return _ticket_out(db, ticket)
+
+
+@router.delete("/test-types/{slug}/tickets/{ticket_id}")
+def delete_test_ticket(
+    slug: str,
+    ticket_id: int,
+    _: Annotated[User, Depends(require_role(UserRole.manager, UserRole.admin))],
+    db: Annotated[Session, Depends(get_db)],
+):
+    test_type = get_test_type_by_slug(db, slug, active_only=False)
+    if not test_type:
+        raise HTTPException(status_code=404, detail="Тест не найден")
+
+    ticket = get_ticket_for_test(db, test_type.id, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Билет не найден")
+
+    attempts_count = (
+        db.query(func.count(TestAttempt.id))
+        .filter(TestAttempt.ticket_id == ticket.id)
+        .scalar()
+        or 0
+    )
+    if attempts_count:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Нельзя удалить билет: есть {attempts_count} попыток прохождения. "
+            "Сначала сбросьте попытки за нужные даты.",
+        )
+
+    db.query(Question).filter(Question.ticket_id == ticket.id).delete(synchronize_session=False)
+    db.delete(ticket)
+    db.commit()
+    return {"deleted": True, "id": ticket_id}
 
 
 @router.post(
@@ -437,8 +479,21 @@ def _apply_worker_list_filters(
     return out
 
 
+def _parse_workers_shift_date(shift_date: str | None) -> str | None:
+    """None — за всё время; иначе YYYY-MM-DD смены."""
+    raw = (shift_date or "").strip()
+    if raw.lower() in ("all", "*"):
+        return None
+    if raw:
+        return raw
+    return today_shift_date()
+
+
 def _worker_shift_rows(
-    db: Session, shift: str, filter_key: str, test_slug: str | None = None
+    db: Session,
+    shift: str | None,
+    filter_key: str,
+    test_slug: str | None = None,
 ) -> list[WorkerShiftEntry]:
     workers = (
         db.query(User)
@@ -446,13 +501,14 @@ def _worker_shift_rows(
         .order_by(User.full_name, User.id)
         .all()
     )
-    attempts = (
+    attempts_q = (
         db.query(TestAttempt)
         .options(joinedload(TestAttempt.test_type), joinedload(TestAttempt.ticket))
-        .filter(TestAttempt.shift_date == shift)
-        .order_by(TestAttempt.user_id, TestAttempt.id.desc())
-        .all()
+        .order_by(TestAttempt.user_id, TestAttempt.shift_date.desc(), TestAttempt.id.desc())
     )
+    if shift is not None:
+        attempts_q = attempts_q.filter(TestAttempt.shift_date == shift)
+    attempts = attempts_q.all()
     by_user: dict[int, list[TestAttempt]] = {}
     for attempt in attempts:
         by_user.setdefault(attempt.user_id, []).append(attempt)
@@ -504,6 +560,8 @@ def _worker_shift_rows(
                 status=a.status,
                 score_percent=a.score_percent,
                 ticket_label=attempt_ticket_label(db, a),
+                shift_date=a.shift_date or "",
+                finished_at=a.finished_at,
                 reset_at=a.reset_at,
             )
             for a in relevant_attempts
@@ -563,7 +621,10 @@ def workers_filter_options(
 def list_workers_by_filter(
     _: Annotated[User, Depends(require_role(UserRole.manager, UserRole.admin))],
     db: Annotated[Session, Depends(get_db)],
-    shift_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    shift_date: str | None = Query(
+        default=None,
+        description="YYYY-MM-DD смены; all — за всё время; пусто — сегодня",
+    ),
     filter: str = Query(default="all", description="all | ready | not_ready | not_started"),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
@@ -572,7 +633,7 @@ def list_workers_by_filter(
     position: str | None = Query(default=None),
     test: str | None = Query(default=None, description="slug теста"),
 ):
-    shift = shift_date or today_shift_date()
+    shift = _parse_workers_shift_date(shift_date)
     filter_key = filter.strip().lower()
     if filter_key not in _WORKER_FILTER_TITLES:
         raise HTTPException(status_code=400, detail="Неизвестный фильтр")
@@ -583,10 +644,13 @@ def list_workers_by_filter(
     total = len(all_workers)
     start = (page - 1) * page_size
     workers = all_workers[start : start + page_size]
+    title = _WORKER_FILTER_TITLES[filter_key]
+    if shift is None:
+        title = f"{title} (за всё время)"
     return WorkerShiftListOut(
-        shift_date=shift,
+        shift_date=shift or "all",
         filter=filter_key,
-        title=_WORKER_FILTER_TITLES[filter_key],
+        title=title,
         count=total,
         page=page,
         page_size=page_size,
@@ -594,29 +658,59 @@ def list_workers_by_filter(
     )
 
 
+def _paginate_attempts_by_people(
+    summaries: list[AttemptSummary],
+    *,
+    page: int,
+    page_size: int,
+) -> tuple[list[AttemptSummary], int]:
+    """Страница таблицы: до page_size сотрудников, все их попытки в списке."""
+    by_user: dict[str, list[AttemptSummary]] = {}
+    for item in summaries:
+        by_user.setdefault(item.username, []).append(item)
+    if not by_user:
+        return [], 0
+
+    usernames = sorted(by_user.keys(), key=lambda u: by_user[u][0].employee_name.casefold())
+    total_people = len(usernames)
+    start = (page - 1) * page_size
+    page_users = usernames[start : start + page_size]
+    page_attempts: list[AttemptSummary] = []
+    for username in page_users:
+        page_attempts.extend(by_user[username])
+    return page_attempts, total_people
+
+
 @router.get("/dashboard", response_model=DashboardStats)
 def dashboard(
     _: Annotated[User, Depends(require_role(UserRole.manager, UserRole.admin))],
     db: Annotated[Session, Depends(get_db)],
-    shift_date: str | None = Query(default=None, description="YYYY-MM-DD"),
+    shift_date: str | None = Query(
+        default=None,
+        description="YYYY-MM-DD; all — за всё время; пусто — сегодня",
+    ),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=10, ge=1, le=100),
 ):
-    shift = shift_date or today_shift_date()
+    shift = _parse_workers_shift_date(shift_date)
     workers = db.query(User).filter(User.role == UserRole.worker).all()
-    attempts = (
+    attempts_q = (
         db.query(TestAttempt)
         .options(
             joinedload(TestAttempt.user),
             joinedload(TestAttempt.test_type),
             joinedload(TestAttempt.ticket),
         )
-        .filter(TestAttempt.shift_date == shift)
-        .order_by(TestAttempt.id.desc())
-        .all()
+        .order_by(TestAttempt.shift_date.desc(), TestAttempt.id.desc())
     )
+    if shift is not None:
+        attempts_q = attempts_q.filter(TestAttempt.shift_date == shift)
+    attempts = attempts_q.all()
 
     summaries: list[AttemptSummary] = []
     ready = not_ready = in_progress = completed = 0
     workers_with_attempt: set[int] = set()
+    workers_ever_completed: set[int] = set()
 
     for attempt in attempts:
         if attempt.status == AttemptStatus.in_progress:
@@ -626,6 +720,7 @@ def dashboard(
         elif attempt.status in (AttemptStatus.ready, AttemptStatus.not_ready):
             completed += 1
             workers_with_attempt.add(attempt.user_id)
+            workers_ever_completed.add(attempt.user_id)
             if attempt.status == AttemptStatus.ready:
                 ready += 1
             else:
@@ -650,17 +745,29 @@ def dashboard(
             )
         )
 
-    not_started = len(workers) - len(workers_with_attempt)
+    if shift is None:
+        not_started = len(workers) - len(workers_ever_completed)
+    else:
+        not_started = len(workers) - len(workers_with_attempt)
+
+    total_pages = max(1, (len({s.username for s in summaries}) + page_size - 1) // page_size) if summaries else 1
+    safe_page = min(page, total_pages) if summaries else 1
+    page_attempts, people_count = _paginate_attempts_by_people(
+        summaries, page=safe_page, page_size=page_size
+    )
 
     return DashboardStats(
-        shift_date=shift,
+        shift_date=shift or "all",
         total_workers=len(workers),
         completed=completed,
         ready=ready,
         not_ready=not_ready,
         in_progress=in_progress,
         not_started=not_started,
-        attempts=summaries,
+        attempts=page_attempts,
+        results_page=safe_page,
+        results_page_size=page_size,
+        results_people_count=people_count,
     )
 
 
@@ -721,7 +828,12 @@ def reset_attempt(
     username: str | None = Query(default=None, description="Логин работника, пусто = все за дату"),
 ):
     """Сброс попыток за дату — только для тестирования и пересдачи."""
-    shift = shift_date or today_shift_date()
+    shift = _parse_workers_shift_date(shift_date)
+    if shift is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Сброс за «всё время» недоступен. Укажите дату смены.",
+        )
     query = db.query(TestAttempt).filter(TestAttempt.shift_date == shift)
     if username:
         worker = db.query(User).filter(User.username == username, User.role == UserRole.worker).first()
@@ -745,10 +857,10 @@ def export_powerbi(
     db: Annotated[Session, Depends(get_db)],
     shift_date: str | None = Query(default=None, description="YYYY-MM-DD"),
 ):
-    shift = shift_date or today_shift_date()
+    shift = _parse_workers_shift_date(shift_date)
     attempts = fetch_attempts_for_export(db, shift)
     content = build_powerbi_csv(attempts)
-    filename = f"spvt_vyvozka_{shift}.csv"
+    filename = f"spvt_vyvozka_{shift or 'all'}.csv"
     return StreamingResponse(
         iter([content]),
         media_type="text/csv; charset=utf-8",

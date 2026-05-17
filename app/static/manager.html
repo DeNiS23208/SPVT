@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>SPVT — Кабинет начальника</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=40">
+  <link rel="stylesheet" href="/static/css/style.css?v=42">
 </head>
 <body class="page-manager">
   <div class="container">
@@ -34,7 +34,16 @@
 
     <div class="card">
       <label for="shift-date">Дата смены</label>
-      <input id="shift-date" type="date">
+      <div class="workers-date-wrap" id="manager-shift-date-wrap">
+        <input id="shift-date" type="date">
+        <button
+          type="button"
+          class="workers-date-clear"
+          id="shift-date-clear"
+          title="Показать за всё время"
+          aria-label="Сбросить дату — за всё время"
+        >×</button>
+      </div>
       <div class="manager-toolbar-grid">
         <button class="btn btn-primary" id="refresh-btn" type="button">Обновить</button>
         <button class="btn btn-success" id="export-btn" type="button">Выгрузить для Power BI (CSV)</button>
@@ -81,31 +90,14 @@
           <tbody id="attempts-body"></tbody>
         </table>
       </div>
+      <p id="results-count" class="subtitle" style="margin:12px 0 0"></p>
       <p id="empty-note" class="subtitle hidden">Пока нет завершённых попыток за выбранную дату.</p>
+      <nav class="workers-pagination hidden" id="results-pagination" aria-label="Страницы результатов"></nav>
     </div>
 
-    <div class="card alert-info">
-      <strong>Power BI и выгрузка</strong>
-      <p class="subtitle" style="margin:8px 0 0">
-        Сайт не может по клику автоматически запустить Power BI на вашем ПК — это ограничение браузера и безопасности Windows.
-      </p>
-      <p class="subtitle" style="margin:8px 0 0">
-        <strong>Как быстрее всего:</strong> скачайте CSV → откройте Power BI Desktop →
-        <em>Получить данные → Текстовый/CSV</em> → укажите файл → разделитель <strong>;</strong>, кодировка UTF-8.
-      </p>
-      <details style="margin-top:12px;color:var(--muted)">
-        <summary style="cursor:pointer;color:var(--accent)">Дополнительно: «почти в один клик» в браузере</summary>
-        <p style="margin:10px 0 0;line-height:1.55">
-          В Chrome или Edge после скачивания нажмите на стрелку у файла в панели загрузок и при необходимости включите
-          «Всегда открывать файлы такого типа». По умолчанию CSV чаще открывается в Excel, а не в Power BI —
-          для Power BI удобнее один раз сохранить шаблон отчёта (.pbix), подключённый к папке «Загрузки», и открывать его,
-          затем нажимать <em>Обновить</em> после новой выгрузки.
-        </p>
-      </details>
-    </div>
   </div>
 
-  <script src="/static/js/app.js?v=37"></script>
+  <script src="/static/js/app.js?v=38"></script>
   <script src="/static/js/site_settings.js?v=24"></script>
   <script src="/static/js/manager_tests.js?v=33"></script>
   <script>
@@ -122,12 +114,40 @@
     });
 
     const shiftInput = document.getElementById("shift-date");
+    const shiftDateWrap = document.getElementById("manager-shift-date-wrap");
+    const shiftDateClear = document.getElementById("shift-date-clear");
+    const resetBtn = document.getElementById("reset-btn");
     const errorBox = document.getElementById("error-box");
-    const urlDate = new URLSearchParams(location.search).get("date");
-    shiftInput.valueAsDate = urlDate ? new Date(urlDate + "T12:00:00") : new Date();
+    const emptyNote = document.getElementById("empty-note");
+    const resultsCountEl = document.getElementById("results-count");
+    const resultsPaginationEl = document.getElementById("results-pagination");
+    const RESULTS_PAGE_SIZE = 10;
+    let resultsPage = Math.max(1, parseInt(new URLSearchParams(location.search).get("page") || "1", 10) || 1);
+
+    function isAllTimeMode() {
+      return shiftDateWrap.classList.contains("is-all-time");
+    }
+
+    function setAllTimeMode(on) {
+      shiftDateWrap.classList.toggle("is-all-time", on);
+      resetBtn.disabled = on;
+      resetBtn.title = on ? "Укажите дату смены для сброса" : "";
+    }
 
     function formatDateParam() {
-      return shiftInput.value;
+      return isAllTimeMode() ? "all" : shiftInput.value;
+    }
+
+    const urlDate = (new URLSearchParams(location.search).get("date") || "").trim().toLowerCase();
+    if (urlDate === "all") {
+      shiftInput.value = "";
+      setAllTimeMode(true);
+    } else if (urlDate) {
+      shiftInput.valueAsDate = new Date(urlDate + "T12:00:00");
+      setAllTimeMode(false);
+    } else {
+      shiftInput.valueAsDate = new Date();
+      setAllTimeMode(false);
     }
 
     function updateStatLinks() {
@@ -139,13 +159,91 @@
       });
     }
 
-    shiftInput.addEventListener("change", updateStatLinks);
+    function syncManagerUrl() {
+      const q = new URLSearchParams(location.search);
+      q.set("date", formatDateParam());
+      q.set("page", String(resultsPage));
+      history.replaceState(null, "", `${location.pathname}?${q.toString()}`);
+    }
+
+    function goToResultsPage(nextPage) {
+      resultsPage = nextPage;
+      syncManagerUrl();
+      loadDashboard().catch((err) => showError(errorBox, err.message));
+    }
+
+    function renderResultsPagination(data) {
+      const totalPeople = data.results_people_count || 0;
+      const pageSize = data.results_page_size || RESULTS_PAGE_SIZE;
+      const current = data.results_page || resultsPage;
+      const totalPages = Math.max(1, Math.ceil(totalPeople / pageSize));
+
+      if (totalPeople === 0) {
+        resultsCountEl.textContent = "";
+        resultsPaginationEl.classList.add("hidden");
+        resultsPaginationEl.innerHTML = "";
+        return;
+      }
+
+      const from = (current - 1) * pageSize + 1;
+      const to = Math.min(current * pageSize, totalPeople);
+      resultsCountEl.textContent =
+        `Сотрудников с попытками: ${totalPeople} · на странице ${from}–${to}`;
+
+      if (totalPages <= 1) {
+        resultsPaginationEl.classList.add("hidden");
+        resultsPaginationEl.innerHTML = "";
+        return;
+      }
+
+      resultsPaginationEl.classList.remove("hidden");
+      const prevDisabled = current <= 1;
+      const nextDisabled = current >= totalPages;
+      resultsPaginationEl.innerHTML = `
+        <button type="button" class="btn btn-secondary btn-sm" id="results-prev" ${prevDisabled ? "disabled" : ""}>← Назад</button>
+        <span class="workers-pagination-info">Страница ${current} из ${totalPages}</span>
+        <button type="button" class="btn btn-secondary btn-sm" id="results-next" ${nextDisabled ? "disabled" : ""}>Вперёд →</button>
+      `;
+      resultsPaginationEl.querySelector("#results-prev")?.addEventListener("click", () => {
+        if (current > 1) goToResultsPage(current - 1);
+      });
+      resultsPaginationEl.querySelector("#results-next")?.addEventListener("click", () => {
+        if (current < totalPages) goToResultsPage(current + 1);
+      });
+    }
+
+    shiftInput.addEventListener("change", () => {
+      if (shiftInput.value) setAllTimeMode(false);
+      resultsPage = 1;
+      updateStatLinks();
+      syncManagerUrl();
+    });
+
+    shiftDateClear.addEventListener("click", async () => {
+      shiftInput.value = "";
+      setAllTimeMode(true);
+      resultsPage = 1;
+      updateStatLinks();
+      syncManagerUrl();
+      try {
+        await loadDashboard();
+      } catch (err) {
+        showError(errorBox, err.message);
+      }
+    });
+
     updateStatLinks();
 
     async function loadDashboard() {
       hideError(errorBox);
       const date = formatDateParam();
-      const data = await API.get(`/api/manager/dashboard?shift_date=${date}`, token);
+      const q = new URLSearchParams({
+        shift_date: date,
+        page: String(resultsPage),
+        page_size: String(RESULTS_PAGE_SIZE),
+      });
+      const data = await API.get(`/api/manager/dashboard?${q.toString()}`, token);
+      resultsPage = data.results_page || resultsPage;
 
       document.getElementById("stat-total").textContent = data.total_workers;
       document.getElementById("stat-ready").textContent = data.ready;
@@ -155,6 +253,12 @@
       const tbody = document.getElementById("attempts-body");
       tbody.innerHTML = "";
       const emptyNote = document.getElementById("empty-note");
+
+      emptyNote.textContent = isAllTimeMode()
+        ? "Пока нет завершённых попыток."
+        : "Пока нет завершённых попыток за выбранную дату.";
+
+      renderResultsPagination(data);
 
       if (!data.attempts.length) {
         emptyNote.classList.remove("hidden");
@@ -202,6 +306,7 @@
           }
         });
       });
+      syncManagerUrl();
     }
 
     document.getElementById("refresh-btn").addEventListener("click", async () => {
@@ -226,7 +331,7 @@
         .then((blob) => {
           const link = document.createElement("a");
           link.href = URL.createObjectURL(blob);
-          link.download = `spvt_vyvozka_${date}.csv`;
+          link.download = `spvt_vyvozka_${date === "all" ? "all" : date}.csv`;
           link.click();
           URL.revokeObjectURL(link.href);
         })
@@ -234,6 +339,10 @@
     });
 
     document.getElementById("reset-btn").addEventListener("click", async () => {
+      if (isAllTimeMode()) {
+        showError(errorBox, "Укажите дату смены для сброса попыток.");
+        return;
+      }
       const date = formatDateParam();
       const okBulkReset = await confirmDialog({
         title: "Сбросить все попытки?",

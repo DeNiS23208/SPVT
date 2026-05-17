@@ -14,6 +14,7 @@ from app.schema_migrate import (
     ensure_attempt_ticket_columns,
     ensure_test_tickets_schema,
     ensure_test_type_schema,
+    ensure_test_type_ticket_time_limit,
     ensure_user_profile_columns,
 )
 from app.services.attempt_tickets import backfill_attempt_ticket_ids
@@ -153,6 +154,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_user_profile_columns()
     ensure_test_type_schema()
+    ensure_test_type_ticket_time_limit()
     ensure_test_tickets_schema()
     ensure_attempt_reset_enum()
     ensure_attempt_ticket_columns()
