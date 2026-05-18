@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>SPVT — Кабинет начальника</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=42">
+  <link rel="stylesheet" href="/static/css/style.css?v=50">
 </head>
 <body class="page-manager">
   <div class="container">
@@ -75,6 +75,36 @@
 
     <div class="card">
       <h2>Результаты</h2>
+      <div class="results-filters-card">
+        <h3 class="results-filters-title">Поиск по таблице</h3>
+        <p class="results-filters-lead">
+          Фильтры ниже влияют только на список попыток. Карточки статистики сверху считаются по всем работникам за выбранную дату.
+        </p>
+        <div class="workers-filters-grid results-filters-grid">
+          <div class="form-field">
+            <label for="results-filter-name">Фамилия / ФИО</label>
+            <input id="results-filter-name" type="search" autocomplete="off" placeholder="Часть фамилии или ФИО">
+          </div>
+          <div class="form-field">
+            <label for="results-filter-test">Тест</label>
+            <select id="results-filter-test">
+              <option value="">Все тесты</option>
+            </select>
+          </div>
+          <div class="form-field">
+            <label for="results-filter-status">Статус</label>
+            <select id="results-filter-status">
+              <option value="">Все</option>
+              <option value="ready">Готов</option>
+              <option value="not_ready">Не готов</option>
+              <option value="reset">Сброшен</option>
+            </select>
+          </div>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm results-filters-reset-btn" id="results-filters-reset">
+          Сбросить фильтры
+        </button>
+      </div>
       <div class="table-wrap">
         <table>
           <thead>
@@ -83,6 +113,7 @@
               <th>Тест</th>
               <th>Билет</th>
               <th>Балл</th>
+              <th>Время</th>
               <th>Статус</th>
               <th class="th-actions"></th>
             </tr>
@@ -97,9 +128,28 @@
 
   </div>
 
+  <div id="retake-timeout-modal" class="spvt-confirm-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="retake-timeout-title">
+    <div class="spvt-confirm-dialog spvt-form-dialog">
+      <h2 class="spvt-confirm-title" id="retake-timeout-title">Таймаут теста</h2>
+      <p class="spvt-confirm-message" id="retake-timeout-lead">Через сколько дней после <strong>успешной</strong> сдачи работнику снова нужно пройти этот тест.</p>
+      <label class="ticket-time-unlimited-row">
+        <input type="checkbox" id="retake-timeout-unlimited">
+        <span>Без повторной сдачи по сроку</span>
+      </label>
+      <div class="form-field" id="retake-timeout-field">
+        <label for="retake-timeout-days">Дней до следующей сдачи</label>
+        <input type="number" id="retake-timeout-days" min="1" max="3650" step="1" value="35">
+      </div>
+      <div class="spvt-confirm-actions">
+        <button type="button" class="btn btn-secondary" id="retake-timeout-cancel">Отмена</button>
+        <button type="button" class="btn btn-primary" id="retake-timeout-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <script src="/static/js/app.js?v=38"></script>
   <script src="/static/js/site_settings.js?v=24"></script>
-  <script src="/static/js/manager_tests.js?v=33"></script>
+  <script src="/static/js/manager_tests.js?v=35"></script>
   <script>
     const token = getToken();
     const role = localStorage.getItem("spvt_role");
@@ -123,6 +173,76 @@
     const resultsPaginationEl = document.getElementById("results-pagination");
     const RESULTS_PAGE_SIZE = 10;
     let resultsPage = Math.max(1, parseInt(new URLSearchParams(location.search).get("page") || "1", 10) || 1);
+
+    function escapeHtml(text) {
+      return String(text ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+    }
+
+    function formatAttemptTimeCell(item) {
+      if (item.allotted_seconds == null || item.allotted_seconds < 1) return "—";
+      const elapsed = item.elapsed_seconds != null ? item.elapsed_seconds : 0;
+      const elapsedMin = Math.max(1, Math.ceil(elapsed / 60));
+      const allottedMin = Math.max(1, Math.round(item.allotted_seconds / 60));
+      const scope =
+        item.time_limit_kind === "question"
+          ? "на вопросы"
+          : item.time_limit_kind === "ticket"
+            ? "на билет"
+            : "";
+      const main = `${elapsedMin} из ${allottedMin} мин`;
+      return scope ? `${main}<br><span class="time-cell-hint">${scope}</span>` : main;
+    }
+
+    function readResultsFiltersFromDom() {
+      return {
+        last_name: (document.getElementById("results-filter-name")?.value || "").trim(),
+        test: (document.getElementById("results-filter-test")?.value || "").trim(),
+        attempt_status: (document.getElementById("results-filter-status")?.value || "").trim(),
+      };
+    }
+
+    function applyUrlToResultsFilters() {
+      const qs = new URLSearchParams(location.search);
+      const nameEl = document.getElementById("results-filter-name");
+      if (nameEl) nameEl.value = (qs.get("last_name") || "").trim();
+      const stEl = document.getElementById("results-filter-status");
+      const st = (qs.get("attempt_status") || "").trim().toLowerCase();
+      if (stEl) stEl.value = ["ready", "not_ready", "reset"].includes(st) ? st : "";
+    }
+
+    let resultsNameDebounce = null;
+    function scheduleResultsFilterReload() {
+      if (resultsNameDebounce) clearTimeout(resultsNameDebounce);
+      resultsNameDebounce = setTimeout(() => {
+        resultsPage = 1;
+        syncManagerUrl();
+        loadDashboard().catch((err) => showError(errorBox, err.message));
+      }, 450);
+    }
+
+    async function fillResultsTestSelect() {
+      const sel = document.getElementById("results-filter-test");
+      if (!sel) return;
+      const saved = (new URLSearchParams(location.search).get("test") || "").trim();
+      try {
+        const tests = await API.get("/api/manager/test-types", token);
+        sel.innerHTML =
+          '<option value="">Все тесты</option>' +
+          tests
+            .map(
+              (t) =>
+                `<option value="${escapeHtml(t.slug)}">${escapeHtml(t.title)}</option>`
+            )
+            .join("");
+        if (saved && [...sel.options].some((o) => o.value === saved)) sel.value = saved;
+      } catch {
+        sel.innerHTML = '<option value="">Все тесты</option>';
+      }
+    }
 
     function isAllTimeMode() {
       return shiftDateWrap.classList.contains("is-all-time");
@@ -163,6 +283,13 @@
       const q = new URLSearchParams(location.search);
       q.set("date", formatDateParam());
       q.set("page", String(resultsPage));
+      const rf = readResultsFiltersFromDom();
+      if (rf.last_name) q.set("last_name", rf.last_name);
+      else q.delete("last_name");
+      if (rf.test) q.set("test", rf.test);
+      else q.delete("test");
+      if (rf.attempt_status) q.set("attempt_status", rf.attempt_status);
+      else q.delete("attempt_status");
       history.replaceState(null, "", `${location.pathname}?${q.toString()}`);
     }
 
@@ -188,7 +315,7 @@
       const from = (current - 1) * pageSize + 1;
       const to = Math.min(current * pageSize, totalPeople);
       resultsCountEl.textContent =
-        `Сотрудников с попытками: ${totalPeople} · на странице ${from}–${to}`;
+        `Записей: ${totalPeople} · на странице ${from}–${to}`;
 
       if (totalPages <= 1) {
         resultsPaginationEl.classList.add("hidden");
@@ -212,11 +339,16 @@
       });
     }
 
-    shiftInput.addEventListener("change", () => {
+    shiftInput.addEventListener("change", async () => {
       if (shiftInput.value) setAllTimeMode(false);
       resultsPage = 1;
       updateStatLinks();
       syncManagerUrl();
+      try {
+        await loadDashboard();
+      } catch (err) {
+        showError(errorBox, err.message);
+      }
     });
 
     shiftDateClear.addEventListener("click", async () => {
@@ -242,6 +374,10 @@
         page: String(resultsPage),
         page_size: String(RESULTS_PAGE_SIZE),
       });
+      const rf = readResultsFiltersFromDom();
+      if (rf.last_name) q.set("last_name", rf.last_name);
+      if (rf.test) q.set("test", rf.test);
+      if (rf.attempt_status) q.set("attempt_status", rf.attempt_status);
       const data = await API.get(`/api/manager/dashboard?${q.toString()}`, token);
       resultsPage = data.results_page || resultsPage;
 
@@ -254,9 +390,16 @@
       tbody.innerHTML = "";
       const emptyNote = document.getElementById("empty-note");
 
-      emptyNote.textContent = isAllTimeMode()
-        ? "Пока нет завершённых попыток."
-        : "Пока нет завершённых попыток за выбранную дату.";
+      const hasFilters = !!(rf.last_name || rf.test || rf.attempt_status);
+      if (isAllTimeMode()) {
+        emptyNote.textContent = hasFilters
+          ? "Нет попыток по выбранным фильтрам."
+          : "Пока нет завершённых попыток.";
+      } else {
+        emptyNote.textContent = hasFilters
+          ? "Нет попыток по выбранным фильтрам за эту дату."
+          : "Пока нет завершённых попыток за выбранную дату.";
+      }
 
       renderResultsPagination(data);
 
@@ -277,6 +420,7 @@
           <td>${escapeHtml(item.test_title || "—")}</td>
           <td>${escapeHtml(item.ticket_label || "—")}</td>
           <td>${item.score_percent != null ? item.score_percent + "%" : "—"}</td>
+          <td class="time-cell">${formatAttemptTimeCell(item)}</td>
           <td class="${st.className}">${escapeHtml(st.text)}</td>
           <td class="td-actions">${resetBtn}</td>
         `;
@@ -338,6 +482,29 @@
         .catch((err) => showError(errorBox, err.message));
     });
 
+    document.getElementById("results-filter-test")?.addEventListener("change", () => {
+      resultsPage = 1;
+      syncManagerUrl();
+      loadDashboard().catch((err) => showError(errorBox, err.message));
+    });
+    document.getElementById("results-filter-status")?.addEventListener("change", () => {
+      resultsPage = 1;
+      syncManagerUrl();
+      loadDashboard().catch((err) => showError(errorBox, err.message));
+    });
+    document.getElementById("results-filter-name")?.addEventListener("input", scheduleResultsFilterReload);
+    document.getElementById("results-filters-reset")?.addEventListener("click", () => {
+      const nameEl = document.getElementById("results-filter-name");
+      if (nameEl) nameEl.value = "";
+      const testEl = document.getElementById("results-filter-test");
+      if (testEl) testEl.value = "";
+      const stEl = document.getElementById("results-filter-status");
+      if (stEl) stEl.value = "";
+      resultsPage = 1;
+      syncManagerUrl();
+      loadDashboard().catch((err) => showError(errorBox, err.message));
+    });
+
     document.getElementById("reset-btn").addEventListener("click", async () => {
       if (isAllTimeMode()) {
         showError(errorBox, "Укажите дату смены для сброса попыток.");
@@ -366,16 +533,13 @@
       }
     });
 
-    function escapeHtml(text) {
-      return String(text ?? "")
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;");
-    }
-
+    applyUrlToResultsFilters();
     loadManagerTests(token, errorBox).catch((err) => showError(errorBox, err.message));
-    loadDashboard().catch((err) => showError(errorBox, err.message));
+    fillResultsTestSelect()
+      .catch(() => {})
+      .finally(() => {
+        loadDashboard().catch((err) => showError(errorBox, err.message));
+      });
   </script>
 </body>
 </html>

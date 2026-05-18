@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>SPVT — Вопросы теста</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=44">
+  <link rel="stylesheet" href="/static/css/style.css?v=48">
 </head>
 <body class="page-manager">
   <div class="container">
@@ -16,6 +16,9 @@
         <p class="subtitle" style="margin:6px 0 0" id="test-subtitle"></p>
       </div>
       <div class="topbar-actions">
+        <button type="button" id="question-time-btn" class="btn btn-secondary" title="Лимит на один вопрос в этом тесте">
+          Время на вопрос
+        </button>
         <button type="button" id="ticket-time-btn" class="btn btn-secondary" title="Лимит времени на один билет">
           Время прохождения билета
         </button>
@@ -40,6 +43,25 @@
     </div>
   </div>
 
+  <div id="question-time-modal" class="spvt-confirm-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="question-time-title">
+    <div class="spvt-confirm-dialog spvt-form-dialog">
+      <h2 class="spvt-confirm-title" id="question-time-title">Время на один вопрос</h2>
+      <p class="spvt-confirm-message">Лимит только для <strong>этого теста</strong>. На каждый вопрос отводится указанное время; по истечении тест завершается с результатом. Если задано и время на билет — приоритет у времени на вопрос.</p>
+      <label class="ticket-time-unlimited-row">
+        <input type="checkbox" id="question-time-unlimited">
+        <span>Без ограничения по времени</span>
+      </label>
+      <div class="form-field" id="question-time-field">
+        <label for="question-time-minutes">Минут на вопрос</label>
+        <input type="number" id="question-time-minutes" min="1" max="60" step="1" value="2">
+      </div>
+      <div class="spvt-confirm-actions">
+        <button type="button" class="btn btn-secondary" id="question-time-cancel">Отмена</button>
+        <button type="button" class="btn btn-primary" id="question-time-save">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
   <div id="ticket-time-modal" class="spvt-confirm-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="ticket-time-title">
     <div class="spvt-confirm-dialog spvt-form-dialog">
       <h2 class="spvt-confirm-title" id="ticket-time-title">Время прохождения билета</h2>
@@ -60,6 +82,6 @@
   </div>
 
   <script src="/static/js/app.js?v=38"></script>
-  <script src="/static/js/manager_test_questions.js?v=30"></script>
+  <script src="/static/js/manager_test_questions.js?v=33"></script>
 </body>
 </html>

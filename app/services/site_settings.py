@@ -12,6 +12,7 @@ DEFAULTS: dict[str, str] = {
     "hero_overlay_opacity": "0.75",
     "accent_color": "#38bdf8",
     "pass_threshold": "80",
+    "question_time_limit_seconds": "",
 }
 
 
@@ -49,3 +50,25 @@ def get_pass_threshold(db: Session) -> float:
         return float(raw)
     except ValueError:
         return 80.0
+
+
+def get_question_time_limit_seconds(db: Session) -> int | None:
+    """Лимит секунд на один вопрос для всех тестов; пусто — без лимита."""
+    raw = get_setting(db, "question_time_limit_seconds").strip()
+    if not raw:
+        return None
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
+def set_question_time_limit_seconds(db: Session, seconds: int | None) -> None:
+    value = str(seconds) if seconds is not None and seconds > 0 else ""
+    row = db.query(SiteSetting).filter(SiteSetting.key == "question_time_limit_seconds").first()
+    if row:
+        row.value = value
+    else:
+        db.add(SiteSetting(key="question_time_limit_seconds", value=value))
+    db.commit()

@@ -52,6 +52,8 @@ class TestType(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     ticket_time_limit_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    question_time_limit_seconds: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    retake_after_days: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     questions: Mapped[list["Question"]] = relationship(back_populates="test_type")
     attempts: Mapped[list["TestAttempt"]] = relationship(back_populates="test_type")
@@ -79,7 +81,8 @@ class Question(Base):
     text: Mapped[str] = mapped_column(Text)
     question_type: Mapped[QuestionType] = mapped_column(Enum(QuestionType))
     options_json: Mapped[str] = mapped_column(Text, default="[]")
-    correct_answer: Mapped[str] = mapped_column(String(255))
+    correct_answer: Mapped[str] = mapped_column(Text, default="")
+    allow_multiple_correct: Mapped[bool] = mapped_column(Boolean, default=False)
     is_critical: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)

@@ -13,6 +13,7 @@ from app.models import (
     Question,
     TestAttempt,
     TestTicket,
+    TestType,
     User,
     UserRole,
 )
@@ -20,16 +21,20 @@ from app.schemas import (
     QuestionOut,
     TestCatalogItemOut,
     TestCatalogOut,
+    TestQuestionsResponse,
     TestResultOut,
     TestSubmitRequest,
 )
 from app.services.attempt_tickets import infer_ticket_id_from_answers, pick_random_ticket
 from app.services.site_settings import get_pass_threshold
+from app.services.test_timing import test_timer_payload
+from app.question_answer_utils import answer_matches_question
 from app.services.test_types import (
     catalog_item_for_user,
     get_test_type_by_slug,
     latest_attempt_for_user,
     list_active_test_types,
+    pass_retake_available_at,
 )
 from app.seed import today_shift_date
 
@@ -43,6 +48,7 @@ def question_to_out(question: Question) -> QuestionOut:
         question_type=question.question_type,
         options=parse_options(question.options_json),
         sort_order=question.sort_order,
+        allow_multiple_correct=bool(question.allow_multiple_correct),
     )
 
 
@@ -109,6 +115,18 @@ def _ensure_today_attempt(db: Session, user: User, test_type_id: int, shift_date
                 db.refresh(attempt)
         return attempt
 
+    tt = db.get(TestType, test_type_id)
+    if tt:
+        next_retake = pass_retake_available_at(
+            db, user.id, test_type_id, tt.retake_after_days
+        )
+        if next_retake is not None and datetime.now(timezone.utc) < next_retake:
+            when = next_retake.strftime("%d.%m.%Y")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Повторная сдача теста «{tt.title}» будет доступна с {when}",
+            )
+
     ticket = pick_random_ticket(db, test_type_id)
     if not ticket:
         raise HTTPException(status_code=400, detail="Нет билетов с вопросами для этого теста")
@@ -138,7 +156,7 @@ def get_test_catalog(
     return TestCatalogOut(tests=items)
 
 
-@router.get("/questions", response_model=list[QuestionOut])
+@router.get("/questions", response_model=TestQuestionsResponse)
 def get_questions(
     user: Annotated[User, Depends(require_role(UserRole.worker))],
     db: Annotated[Session, Depends(get_db)],
@@ -154,7 +172,11 @@ def get_questions(
     )
     if not questions:
         raise HTTPException(status_code=400, detail="В выбранном билете нет вопросов")
-    return [question_to_out(q) for q in questions]
+    timing = test_timer_payload(tt)
+    return TestQuestionsResponse(
+        questions=[question_to_out(q) for q in questions],
+        **timing,
+    )
 
 
 @router.get("/status")
@@ -166,12 +188,21 @@ def get_today_status(
     tt = resolve_test_type(db, test_type)
     shift_date = today_shift_date()
     attempt = latest_attempt_for_user(db, user.id, tt.id, shift_date=shift_date)
+    timing = test_timer_payload(tt)
+    catalog = catalog_item_for_user(db, user, tt)
+    retake_fields = {
+        "retake_after_days": catalog.get("retake_after_days"),
+        "next_retake_at": catalog.get("next_retake_at"),
+        "can_start": catalog.get("can_start"),
+    }
     if not attempt or attempt.status in (AttemptStatus.reset, AttemptStatus.in_progress):
         return {
             "test_type": tt.slug,
             "test_title": tt.title,
             "shift_date": shift_date,
             "has_attempt": False,
+            **timing,
+            **retake_fields,
         }
 
     return {
@@ -184,6 +215,8 @@ def get_today_status(
         "score_percent": attempt.score_percent,
         "passed": attempt.passed,
         "finished_at": attempt.finished_at,
+        **timing,
+        **retake_fields,
     }
 
 
@@ -238,7 +271,7 @@ def submit_test(
         if not question:
             raise HTTPException(status_code=400, detail=f"Неизвестный вопрос: {item.question_id}")
 
-        is_correct = item.answer.strip() == question.correct_answer.strip()
+        is_correct = answer_matches_question(question, item.answer)
         if is_correct:
             correct_count += 1
 

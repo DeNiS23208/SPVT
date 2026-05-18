@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import re
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from sqlalchemy import func
@@ -128,6 +128,34 @@ def latest_attempt_for_user(
     return q.order_by(TestAttempt.id.desc()).first()
 
 
+def pass_retake_available_at(
+    db: Session, user_id: int, test_type_id: int, retake_after_days: int | None
+) -> datetime | None:
+    """Когда можно снова сдать тест после последней успешной сдачи."""
+    if not retake_after_days or retake_after_days < 1:
+        return None
+    last_pass = (
+        db.query(TestAttempt)
+        .filter(
+            TestAttempt.user_id == user_id,
+            TestAttempt.test_type_id == test_type_id,
+            TestAttempt.status == AttemptStatus.ready,
+            TestAttempt.passed.is_(True),
+            TestAttempt.finished_at.isnot(None),
+        )
+        .order_by(TestAttempt.finished_at.desc())
+        .first()
+    )
+    if not last_pass or not last_pass.finished_at:
+        return None
+    finished = last_pass.finished_at
+    if finished.tzinfo is None:
+        finished = finished.replace(tzinfo=timezone.utc)
+    else:
+        finished = finished.astimezone(timezone.utc)
+    return finished + timedelta(days=int(retake_after_days))
+
+
 def last_finished_attempt(db: Session, user_id: int, test_type_id: int) -> TestAttempt | None:
     return (
         db.query(TestAttempt)
@@ -153,6 +181,13 @@ def catalog_item_for_user(db: Session, user: User, test_type: TestType) -> dict:
         and today_attempt.status not in (AttemptStatus.in_progress, AttemptStatus.reset)
     )
     can_start = not has_attempt_today
+    next_retake_at = pass_retake_available_at(
+        db, user.id, test_type.id, test_type.retake_after_days
+    )
+    if can_start and next_retake_at is not None:
+        now = datetime.now(timezone.utc)
+        if now < next_retake_at:
+            can_start = False
 
     passed_today: bool | None = None
     status_today: AttemptStatus | None = None
@@ -198,4 +233,6 @@ def catalog_item_for_user(db: Session, user: User, test_type: TestType) -> dict:
         "last_finished_at": last_finished_at,
         "last_correct_count": last_correct_count,
         "last_total_questions": last_total_questions,
+        "retake_after_days": test_type.retake_after_days,
+        "next_retake_at": next_retake_at,
     }

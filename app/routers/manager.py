@@ -20,6 +20,7 @@ from app.models import (
     User,
     UserRole,
 )
+from app.question_answer_utils import serialize_stored_correct
 from app.schemas import (
     AttemptSummary,
     DashboardStats,
@@ -44,6 +45,7 @@ from app.services.test_tickets import (
     next_ticket_title,
 )
 from app.services.attempt_tickets import attempt_ticket_label, infer_ticket_id_from_answers
+from app.services.test_timing import attempt_time_stats
 from app.services.test_types import (
     delete_test_type,
     get_test_type_by_slug,
@@ -52,6 +54,28 @@ from app.services.test_types import (
 )
 
 router = APIRouter(prefix="/api/manager", tags=["manager"])
+
+
+def _attempt_summary(db: Session, attempt: TestAttempt) -> AttemptSummary:
+    timing = attempt_time_stats(db, attempt)
+    return AttemptSummary(
+        attempt_id=attempt.id,
+        employee_name=attempt.user.full_name,
+        username=attempt.user.username,
+        test_title=attempt.test_type.title if attempt.test_type else "—",
+        test_slug=attempt.test_type.slug if attempt.test_type else "",
+        ticket_label=attempt_ticket_label(db, attempt),
+        shift_date=attempt.shift_date,
+        started_at=attempt.started_at,
+        finished_at=attempt.finished_at,
+        score_percent=attempt.score_percent,
+        passed=attempt.passed,
+        status=attempt.status,
+        reset_at=attempt.reset_at,
+        can_reset=attempt.status
+        in (AttemptStatus.ready, AttemptStatus.not_ready, AttemptStatus.in_progress),
+        **timing,
+    )
 
 
 def _test_type_admin_out(db: Session, test_type: TestType) -> TestTypeAdminOut:
@@ -75,6 +99,8 @@ def _test_type_admin_out(db: Session, test_type: TestType) -> TestTypeAdminOut:
         sort_order=test_type.sort_order,
         is_active=test_type.is_active,
         ticket_time_limit_minutes=test_type.ticket_time_limit_minutes,
+        question_time_limit_seconds=test_type.question_time_limit_seconds,
+        retake_after_days=test_type.retake_after_days,
         tickets_count=int(t_count),
         questions_count=int(q_count),
     )
@@ -138,9 +164,21 @@ def patch_test_type(
     updates = payload.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="Нет данных для обновления")
-    limit = updates.get("ticket_time_limit_minutes")
-    if limit is not None and (limit < 1 or limit > 480):
+    ticket_limit = updates.get("ticket_time_limit_minutes")
+    if ticket_limit is not None and (ticket_limit < 1 or ticket_limit > 480):
         raise HTTPException(status_code=400, detail="Время на билет: от 1 до 480 минут")
+    question_limit = updates.get("question_time_limit_seconds")
+    if question_limit is not None and (question_limit < 15 or question_limit > 3600):
+        raise HTTPException(
+            status_code=400,
+            detail="Время на вопрос: от 15 секунд до 60 минут",
+        )
+    retake_days = updates.get("retake_after_days")
+    if retake_days is not None and (retake_days < 1 or retake_days > 3650):
+        raise HTTPException(
+            status_code=400,
+            detail="Таймаут повторной сдачи: от 1 до 3650 дней",
+        )
     for key, value in updates.items():
         setattr(test_type, key, value)
     db.commit()
@@ -189,6 +227,7 @@ def _manager_question_out(question: Question) -> ManagerQuestionOut:
         question_type=question.question_type,
         options=parse_options(question.options_json),
         correct_answer=question.correct_answer,
+        allow_multiple_correct=bool(question.allow_multiple_correct),
         sort_order=question.sort_order,
     )
 
@@ -217,16 +256,37 @@ def _validate_manager_question(payload: ManagerQuestionCreate) -> dict:
     if len(options) < 2:
         raise HTTPException(status_code=400, detail="Добавьте минимум два варианта ответа")
 
-    correct = payload.correct_answer.strip()
-    if not correct:
-        raise HTTPException(status_code=400, detail="Отметьте правильный ответ")
-    if correct not in options:
-        raise HTTPException(status_code=400, detail="Правильный ответ должен совпадать с одним из вариантов")
+    allow_multi = bool(payload.allow_multiple_correct)
+    if allow_multi:
+        raw = payload.correct_answers if payload.correct_answers is not None else []
+        answers = [str(a).strip() for a in raw if str(a).strip()]
+        if len(answers) < 2:
+            raise HTTPException(
+                status_code=400,
+                detail="Отметьте минимум два правильных варианта",
+            )
+        if len(set(answers)) != len(answers):
+            raise HTTPException(status_code=400, detail="Правильные варианты не должны повторяться")
+        for a in answers:
+            if a not in options:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Каждый правильный ответ должен совпадать с одним из вариантов",
+                )
+        stored = serialize_stored_correct(True, answers)
+    else:
+        correct = (payload.correct_answer or "").strip()
+        if not correct:
+            raise HTTPException(status_code=400, detail="Отметьте правильный ответ")
+        if correct not in options:
+            raise HTTPException(status_code=400, detail="Правильный ответ должен совпадать с одним из вариантов")
+        stored = serialize_stored_correct(False, [correct])
 
     return {
         "text": text,
         "options": options,
-        "correct_answer": correct,
+        "correct_answer": stored,
+        "allow_multiple_correct": allow_multi,
     }
 
 
@@ -345,6 +405,7 @@ def create_ticket_question(
         question_type=QuestionType.single_choice,
         options_json=json.dumps(data["options"], ensure_ascii=False),
         correct_answer=data["correct_answer"],
+        allow_multiple_correct=data["allow_multiple_correct"],
         is_critical=False,
         sort_order=max_order + 1,
         is_active=True,
@@ -392,6 +453,7 @@ def update_ticket_question(
     question.question_type = QuestionType.single_choice
     question.options_json = json.dumps(data["options"], ensure_ascii=False)
     question.correct_answer = data["correct_answer"]
+    question.allow_multiple_correct = data["allow_multiple_correct"]
     db.commit()
     db.refresh(question)
     return _manager_question_out(question)
@@ -658,27 +720,59 @@ def list_workers_by_filter(
     )
 
 
-def _paginate_attempts_by_people(
+def _apply_dashboard_results_filters(
+    summaries: list[AttemptSummary],
+    *,
+    last_name: str | None,
+    test_slug: str | None,
+    attempt_status_raw: str | None,
+) -> list[AttemptSummary]:
+    """Фильтры таблицы «Результаты» (до пагинации по сотрудникам)."""
+    out = list(summaries)
+    ln = (last_name or "").strip().casefold()
+    if ln:
+        out = [s for s in out if ln in s.employee_name.casefold()]
+    ts = (test_slug or "").strip().lower()
+    if ts:
+        out = [s for s in out if (s.test_slug or "").lower() == ts]
+    raw = (attempt_status_raw or "").strip().lower()
+    if raw:
+        if raw not in ("ready", "not_ready", "reset"):
+            raise HTTPException(
+                status_code=400,
+                detail="Статус: готов, не готов или сброшен",
+            )
+        want = AttemptStatus(raw)
+        out = [s for s in out if s.status == want]
+    return out
+
+
+def _attempt_activity_ts(item: AttemptSummary) -> datetime:
+    """Время события для сортировки: сброс / завершение / начало попытки."""
+    if item.status == AttemptStatus.reset and item.reset_at is not None:
+        dt = item.reset_at
+    elif item.finished_at is not None:
+        dt = item.finished_at
+    else:
+        dt = item.started_at
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def _paginate_attempts_newest_first(
     summaries: list[AttemptSummary],
     *,
     page: int,
     page_size: int,
 ) -> tuple[list[AttemptSummary], int]:
-    """Страница таблицы: до page_size сотрудников, все их попытки в списке."""
-    by_user: dict[str, list[AttemptSummary]] = {}
-    for item in summaries:
-        by_user.setdefault(item.username, []).append(item)
-    if not by_user:
+    """Страница таблицы: попытки по убыванию даты (свежие сверху)."""
+    if not summaries:
         return [], 0
-
-    usernames = sorted(by_user.keys(), key=lambda u: by_user[u][0].employee_name.casefold())
-    total_people = len(usernames)
+    ordered = sorted(summaries, key=_attempt_activity_ts, reverse=True)
+    total = len(ordered)
     start = (page - 1) * page_size
-    page_users = usernames[start : start + page_size]
-    page_attempts: list[AttemptSummary] = []
-    for username in page_users:
-        page_attempts.extend(by_user[username])
-    return page_attempts, total_people
+    return ordered[start : start + page_size], total
 
 
 @router.get("/dashboard", response_model=DashboardStats)
@@ -691,6 +785,12 @@ def dashboard(
     ),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=10, ge=1, le=100),
+    last_name: str | None = Query(default=None, description="Подстрока в ФИО (фамилия и т.д.)"),
+    test: str | None = Query(default=None, description="slug теста"),
+    attempt_status: str | None = Query(
+        default=None,
+        description="ready | not_ready | reset",
+    ),
 ):
     shift = _parse_workers_shift_date(shift_date)
     workers = db.query(User).filter(User.role == UserRole.worker).all()
@@ -726,34 +826,23 @@ def dashboard(
             else:
                 not_ready += 1
 
-        summaries.append(
-            AttemptSummary(
-                attempt_id=attempt.id,
-                employee_name=attempt.user.full_name,
-                username=attempt.user.username,
-                test_title=attempt.test_type.title if attempt.test_type else "—",
-                ticket_label=attempt_ticket_label(db, attempt),
-                shift_date=attempt.shift_date,
-                started_at=attempt.started_at,
-                finished_at=attempt.finished_at,
-                score_percent=attempt.score_percent,
-                passed=attempt.passed,
-                status=attempt.status,
-                reset_at=attempt.reset_at,
-                can_reset=attempt.status
-                in (AttemptStatus.ready, AttemptStatus.not_ready, AttemptStatus.in_progress),
-            )
-        )
+        summaries.append(_attempt_summary(db, attempt))
 
     if shift is None:
         not_started = len(workers) - len(workers_ever_completed)
     else:
         not_started = len(workers) - len(workers_with_attempt)
 
-    total_pages = max(1, (len({s.username for s in summaries}) + page_size - 1) // page_size) if summaries else 1
-    safe_page = min(page, total_pages) if summaries else 1
-    page_attempts, people_count = _paginate_attempts_by_people(
-        summaries, page=safe_page, page_size=page_size
+    filtered = _apply_dashboard_results_filters(
+        summaries,
+        last_name=last_name,
+        test_slug=test,
+        attempt_status_raw=attempt_status,
+    )
+    total_pages = max(1, (len(filtered) + page_size - 1) // page_size) if filtered else 1
+    safe_page = min(page, total_pages) if filtered else 1
+    page_attempts, rows_count = _paginate_attempts_newest_first(
+        filtered, page=safe_page, page_size=page_size
     )
 
     return DashboardStats(
@@ -767,7 +856,7 @@ def dashboard(
         attempts=page_attempts,
         results_page=safe_page,
         results_page_size=page_size,
-        results_people_count=people_count,
+        results_people_count=rows_count,
     )
 
 
@@ -803,21 +892,9 @@ def reset_single_attempt(
     db.commit()
     db.refresh(attempt)
 
-    return AttemptSummary(
-        attempt_id=attempt.id,
-        employee_name=attempt.user.full_name,
-        username=attempt.user.username,
-        test_title=attempt.test_type.title if attempt.test_type else "—",
-        ticket_label=attempt_ticket_label(db, attempt),
-        shift_date=attempt.shift_date,
-        started_at=attempt.started_at,
-        finished_at=attempt.finished_at,
-        score_percent=attempt.score_percent,
-        passed=attempt.passed,
-        status=attempt.status,
-        reset_at=attempt.reset_at,
-        can_reset=False,
-    )
+    summary = _attempt_summary(db, attempt)
+    summary.can_reset = False
+    return summary
 
 
 @router.post("/reset-attempt")

@@ -27,6 +27,23 @@
     return el.innerHTML;
   }
 
+  function retakeNoticeHtml(test) {
+    if (!test.retake_after_days || test.retake_after_days < 1) return "";
+    if (test.can_start || !test.next_retake_at) return "";
+    const when = formatDateIrkutskShort(test.next_retake_at);
+    const n = Number(test.retake_after_days);
+    const word = n % 10 === 1 && n % 100 !== 11 ? "день" : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? "дня" : "дней";
+    return (
+      '<p class="test-card-retake-notice">После успешной сдачи следующая потребуется не ранее <strong>' +
+      escapeHtml(when) +
+      "</strong> (через " +
+      n +
+      " " +
+      word +
+      ")</p>"
+    );
+  }
+
   function statusBadge(test) {
     if (test.has_attempt_today) {
       if (test.passed_today) {
@@ -73,6 +90,7 @@
           </div>
         </div>
         <p class="test-card-desc">${escapeHtml(test.description || "")}</p>
+        ${retakeNoticeHtml(test)}
         <div class="test-card-meta">
           <span>Последнее прохождение: <strong>${lastDate}</strong></span>
           ${scoreLine ? `<span>${escapeHtml(scoreLine)}</span>` : ""}
@@ -100,7 +118,12 @@
         return;
       }
       testsScreen.classList.remove("hidden");
-      renderTests(data.tests);
+      try {
+        renderTests(data.tests);
+      } catch (renderErr) {
+        console.error(renderErr);
+        showError(errorBox, "Не удалось отобразить список тестов. Обновите страницу.");
+      }
     } catch (err) {
       loadingEl.classList.add("hidden");
       showError(errorBox, err.message);

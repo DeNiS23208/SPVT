@@ -103,6 +103,7 @@ def import_questions_from_excel(db: Session, test_type_id: int, file_bytes: byte
                 question_type=payload["question_type"],
                 options_json=json.dumps(payload["options"], ensure_ascii=False),
                 correct_answer=payload["correct_answer"],
+                allow_multiple_correct=False,
                 is_critical=False,
                 sort_order=payload["sort_order"],
                 is_active=True,

@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <title>SPVT — Тестирование</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=17">
+  <link rel="stylesheet" href="/static/css/style.css?v=48">
 </head>
 <body>
   <div class="container">
@@ -27,10 +28,15 @@
 
     <div id="test-screen" class="hidden">
       <div class="card">
+        <div id="question-timer-wrap" class="question-timer question-timer--card" style="display:none" aria-live="polite">
+          <span class="question-timer__label">Время на ответ</span>
+          <span id="question-timer-value" class="question-timer__value">0:00</span>
+        </div>
         <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
         <p class="subtitle" id="question-counter"></p>
+        <div id="question-hint-wrap" class="question-hint-wrap" hidden></div>
         <h2 id="question-text"></h2>
-        <div id="options"></div>
+        <div id="options" class="options" role="listbox" aria-labelledby="question-text"></div>
         <button class="btn btn-primary" id="next-btn" type="button" disabled>Далее</button>
       </div>
     </div>
@@ -42,8 +48,7 @@
     </div>
   </div>
 
-  <script src="/static/js/app.js?v=17"></script>
-  <script src="/static/js/site_settings.js?v=17"></script>
-  <script src="/static/js/worker_test.js?v=17"></script>
+  <script src="/static/js/app.js?v=25"></script>
+  <script src="/static/js/worker_test.js?v=26"></script>
 </body>
 </html>

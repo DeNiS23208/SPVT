@@ -41,8 +41,18 @@ class QuestionOut(BaseModel):
     question_type: QuestionType
     options: list[str]
     sort_order: int
+    allow_multiple_correct: bool = False
 
     model_config = {"from_attributes": True}
+
+
+class TestQuestionsResponse(BaseModel):
+    """Настройки времени только для текущего теста (не глобально)."""
+
+    timer_mode: str | None = None
+    question_time_limit_seconds: int | None = None
+    ticket_time_limit_minutes: int | None = None
+    questions: list[QuestionOut]
 
 
 class AnswerSubmit(BaseModel):
@@ -66,10 +76,23 @@ class TestCatalogItemOut(BaseModel):
     last_finished_at: datetime | None = None
     last_correct_count: int | None = None
     last_total_questions: int | None = None
+    retake_after_days: int | None = None
+    next_retake_at: datetime | None = None
 
     @field_serializer("last_finished_at")
     @classmethod
     def serialize_last_finished_at(cls, value: datetime | None) -> str | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        else:
+            value = value.astimezone(timezone.utc)
+        return value.isoformat().replace("+00:00", "Z")
+
+    @field_serializer("next_retake_at")
+    @classmethod
+    def serialize_next_retake_at(cls, value: datetime | None) -> str | None:
         if value is None:
             return None
         if value.tzinfo is None:
@@ -91,6 +114,8 @@ class TestTypeAdminOut(BaseModel):
     sort_order: int
     is_active: bool
     ticket_time_limit_minutes: int | None = None
+    question_time_limit_seconds: int | None = None
+    retake_after_days: int | None = None
     tickets_count: int = 0
     questions_count: int = 0
 
@@ -103,6 +128,7 @@ class ManagerQuestionOut(BaseModel):
     question_type: QuestionType
     options: list[str]
     correct_answer: str
+    allow_multiple_correct: bool = False
     sort_order: int
 
 
@@ -120,7 +146,9 @@ class TestTicketCreate(BaseModel):
 class ManagerQuestionCreate(BaseModel):
     text: str
     options: list[str] = Field(default_factory=list)
-    correct_answer: str
+    correct_answer: str = ""
+    allow_multiple_correct: bool = False
+    correct_answers: list[str] | None = None
 
 
 class TestTypeCreate(BaseModel):
@@ -131,6 +159,8 @@ class TestTypeCreate(BaseModel):
 class TestTypePatch(BaseModel):
     is_active: bool | None = None
     ticket_time_limit_minutes: int | None = None
+    question_time_limit_seconds: int | None = None
+    retake_after_days: int | None = None
 
 
 class TestSubmitRequest(BaseModel):
@@ -151,6 +181,7 @@ class AttemptSummary(BaseModel):
     employee_name: str
     username: str
     test_title: str
+    test_slug: str = ""
     ticket_label: str = ""
     shift_date: str
     started_at: datetime
@@ -160,6 +191,9 @@ class AttemptSummary(BaseModel):
     status: AttemptStatus
     reset_at: datetime | None = None
     can_reset: bool = True
+    elapsed_seconds: int | None = None
+    allotted_seconds: int | None = None
+    time_limit_kind: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -219,6 +253,16 @@ class DashboardStats(BaseModel):
     results_people_count: int = 0
 
 
+class GlobalTestSettingsOut(BaseModel):
+    """Общие настройки прохождения тестов (для всех типов тестов)."""
+
+    question_time_limit_seconds: int | None = None
+
+
+class GlobalTestSettingsPatch(BaseModel):
+    question_time_limit_seconds: int | None = None
+
+
 class SiteSettingsOut(BaseModel):
     site_title: str
     site_subtitle: str
@@ -227,6 +271,7 @@ class SiteSettingsOut(BaseModel):
     hero_overlay_opacity: str
     accent_color: str
     pass_threshold: str
+    question_time_limit_seconds: str = ""
 
 
 class SiteSettingsUpdate(BaseModel):
@@ -237,6 +282,7 @@ class SiteSettingsUpdate(BaseModel):
     hero_overlay_opacity: str | None = None
     accent_color: str | None = None
     pass_threshold: str | None = None
+    question_time_limit_seconds: str | None = None
 
 
 class QuestionAdminOut(BaseModel):
@@ -246,6 +292,7 @@ class QuestionAdminOut(BaseModel):
     question_type: QuestionType
     options: list[str]
     correct_answer: str
+    allow_multiple_correct: bool = False
     is_critical: bool
     sort_order: int
     is_active: bool
@@ -258,6 +305,7 @@ class QuestionCreate(BaseModel):
     question_type: QuestionType
     options: list[str] = Field(default_factory=list)
     correct_answer: str
+    allow_multiple_correct: bool = False
     is_critical: bool = False
     sort_order: int = 0
     is_active: bool = True
@@ -269,6 +317,7 @@ class QuestionUpdate(BaseModel):
     question_type: QuestionType | None = None
     options: list[str] | None = None
     correct_answer: str | None = None
+    allow_multiple_correct: bool | None = None
     is_critical: bool | None = None
     sort_order: int | None = None
     is_active: bool | None = None

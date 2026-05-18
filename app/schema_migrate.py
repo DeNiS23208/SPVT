@@ -139,6 +139,48 @@ def ensure_test_type_ticket_time_limit() -> None:
             )
 
 
+def ensure_test_type_retake_after_days() -> None:
+    """Через сколько дней после успешной сдачи нужно проходить тест снова."""
+    inspector = inspect(engine)
+    if "test_types" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("test_types")}
+    if "retake_after_days" in columns:
+        return
+    with engine.begin() as conn:
+        if is_postgresql():
+            conn.execute(
+                text(
+                    "ALTER TABLE test_types ADD COLUMN IF NOT EXISTS "
+                    "retake_after_days INTEGER"
+                )
+            )
+        else:
+            conn.execute(text("ALTER TABLE test_types ADD COLUMN retake_after_days INTEGER"))
+
+
+def ensure_test_type_question_time_limit() -> None:
+    """Лимит времени (секунд) на один вопрос — отдельно для каждого теста."""
+    inspector = inspect(engine)
+    if "test_types" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("test_types")}
+    if "question_time_limit_seconds" in columns:
+        return
+    with engine.begin() as conn:
+        if is_postgresql():
+            conn.execute(
+                text(
+                    "ALTER TABLE test_types ADD COLUMN IF NOT EXISTS "
+                    "question_time_limit_seconds INTEGER"
+                )
+            )
+        else:
+            conn.execute(
+                text("ALTER TABLE test_types ADD COLUMN question_time_limit_seconds INTEGER")
+            )
+
+
 def ensure_test_tickets_schema() -> None:
     """Билеты (наборы вопросов) внутри теста."""
     inspector = inspect(engine)
@@ -220,3 +262,40 @@ def ensure_attempt_ticket_columns() -> None:
                 conn.execute(text("ALTER TABLE test_attempts ADD COLUMN IF NOT EXISTS reset_at TIMESTAMP"))
             else:
                 conn.execute(text("ALTER TABLE test_attempts ADD COLUMN reset_at TIMESTAMP"))
+
+
+def ensure_question_multiple_correct() -> None:
+    """Флаг «несколько правильных» и TEXT для длинного JSON correct_answer."""
+    inspector = inspect(engine)
+    if "questions" not in inspector.get_table_names():
+        return
+    columns = {c["name"]: c for c in inspector.get_columns("questions")}
+    with engine.begin() as conn:
+        if "allow_multiple_correct" not in columns:
+            if is_postgresql():
+                conn.execute(
+                    text(
+                        "ALTER TABLE questions ADD COLUMN IF NOT EXISTS "
+                        "allow_multiple_correct BOOLEAN NOT NULL DEFAULT FALSE"
+                    )
+                )
+            else:
+                conn.execute(
+                    text(
+                        "ALTER TABLE questions ADD COLUMN allow_multiple_correct "
+                        "BOOLEAN NOT NULL DEFAULT 0"
+                    )
+                )
+    # VIEW v_* ссылаются на correct_answer — без DROP ALTER не проходит.
+    if is_postgresql():
+        from app.pg_setup import setup_postgresql_extras
+
+        with engine.begin() as conn:
+            for view_name in ("v_powerbi_export", "v_voprosy", "v_otvety"):
+                conn.execute(text(f"DROP VIEW IF EXISTS {view_name} CASCADE"))
+        with engine.begin() as conn:
+            try:
+                conn.execute(text("ALTER TABLE questions ALTER COLUMN correct_answer TYPE TEXT"))
+            except Exception:
+                pass
+        setup_postgresql_extras()

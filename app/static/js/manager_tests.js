@@ -5,6 +5,14 @@ const TRASH_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" 
 </svg>`;
 
 let managerTestsDeleteBound = false;
+let retakeModalSlug = null;
+
+const retakeModal = document.getElementById("retake-timeout-modal");
+const retakeUnlimited = document.getElementById("retake-timeout-unlimited");
+const retakeField = document.getElementById("retake-timeout-field");
+const retakeDaysInput = document.getElementById("retake-timeout-days");
+const retakeSaveBtn = document.getElementById("retake-timeout-save");
+const retakeCancelBtn = document.getElementById("retake-timeout-cancel");
 
 function pluralRu(n, one, few, many) {
   const abs = Math.abs(n) % 100;
@@ -27,7 +35,43 @@ function formatQuestionsBadge(n) {
   return `<span class="test-card-metric"><span class="test-card-metric-value">${count}</span><span class="test-card-metric-label">${word}</span></span>`;
 }
 
+function retakeButtonLabel(days) {
+  const n = Number(days);
+  if (!n || n < 1) return "Таймаут теста";
+  const word = pluralRu(n, "день", "дня", "дней");
+  return `Таймаут: ${n} ${word}`;
+}
+
+function syncRetakeForm() {
+  if (!retakeUnlimited || !retakeField) return;
+  const unlimited = retakeUnlimited.checked;
+  retakeField.classList.toggle("is-disabled", unlimited);
+  if (retakeDaysInput) retakeDaysInput.disabled = unlimited;
+}
+
+function openRetakeModal(test) {
+  if (!retakeModal) return;
+  retakeModalSlug = test.slug;
+  const days = test.retake_after_days;
+  if (days == null || days < 1) {
+    retakeUnlimited.checked = true;
+    retakeDaysInput.value = "35";
+  } else {
+    retakeUnlimited.checked = false;
+    retakeDaysInput.value = String(days);
+  }
+  syncRetakeForm();
+  retakeModal.classList.remove("hidden");
+  retakeDaysInput?.focus();
+}
+
+function closeRetakeModal() {
+  if (retakeModal) retakeModal.classList.add("hidden");
+  retakeModalSlug = null;
+}
+
 async function loadManagerTests(token, errorBox) {
+  bindRetakeModal(token, errorBox);
   const grid = document.getElementById("manager-tests-grid");
   if (!grid) return;
 
@@ -59,8 +103,18 @@ async function loadManagerTests(token, errorBox) {
         ${formatQuestionsBadge(test.questions_count)}
       </div>
       <p class="test-card-desc">${escapeHtml(test.description || "")}</p>
-      <a class="btn btn-secondary btn-card-action" href="/manager/tests/questions?test=${encodeURIComponent(test.slug)}">Редактировать билеты</a>
+      <div class="test-card-actions">
+        <button type="button" class="btn btn-secondary btn-card-action btn-retake-timeout" data-slug="${escapeHtml(test.slug)}">${escapeHtml(retakeButtonLabel(test.retake_after_days))}</button>
+        <a class="btn btn-secondary btn-card-action" href="/manager/tests/questions?test=${encodeURIComponent(test.slug)}">Редактировать билеты</a>
+      </div>
     `;
+
+    const retakeBtn = card.querySelector(".btn-retake-timeout");
+    retakeBtn.addEventListener("click", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      openRetakeModal(test);
+    });
 
     grid.appendChild(card);
   });
@@ -138,6 +192,47 @@ function bindManagerTestActions(grid, token, errorBox) {
   });
 }
 
+function bindRetakeModal(token, errorBox) {
+  if (!retakeModal || retakeModal.dataset.bound === "1") return;
+  retakeModal.dataset.bound = "1";
+
+  retakeUnlimited?.addEventListener("change", syncRetakeForm);
+  retakeCancelBtn?.addEventListener("click", closeRetakeModal);
+  retakeModal.addEventListener("click", (e) => {
+    if (e.target === retakeModal) closeRetakeModal();
+  });
+
+  retakeSaveBtn?.addEventListener("click", async () => {
+    if (!retakeModalSlug) return;
+    let payload;
+    if (retakeUnlimited.checked) {
+      payload = { retake_after_days: null };
+    } else {
+      const days = parseInt(retakeDaysInput.value, 10);
+      if (!Number.isFinite(days) || days < 1 || days > 3650) {
+        if (errorBox) showError(errorBox, "Укажите от 1 до 3650 дней или снимите ограничение по сроку.");
+        return;
+      }
+      payload = { retake_after_days: days };
+    }
+    retakeSaveBtn.disabled = true;
+    try {
+      hideError(errorBox);
+      await API.patch(
+        `/api/manager/test-types/${encodeURIComponent(retakeModalSlug)}`,
+        token,
+        payload
+      );
+      closeRetakeModal();
+      await loadManagerTests(token, errorBox);
+    } catch (err) {
+      if (errorBox) showError(errorBox, err.message);
+    } finally {
+      retakeSaveBtn.disabled = false;
+    }
+  });
+}
+
 function renderManagerAddTestCard(grid) {
   if (!grid || grid.querySelector(".test-card-add")) return;
   const addLink = document.createElement("a");
@@ -154,4 +249,9 @@ function escapeHtml(text) {
   const el = document.createElement("span");
   el.textContent = text;
   return el.innerHTML;
+}
+
+function initManagerTestsBlock(token, errorBox) {
+  bindRetakeModal(token, errorBox);
+  return loadManagerTests(token, errorBox);
 }

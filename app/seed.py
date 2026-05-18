@@ -12,9 +12,12 @@ from app.schema_migrate import (
     ensure_site_settings_table,
     ensure_attempt_reset_enum,
     ensure_attempt_ticket_columns,
+    ensure_question_multiple_correct,
     ensure_test_tickets_schema,
     ensure_test_type_schema,
     ensure_test_type_ticket_time_limit,
+    ensure_test_type_question_time_limit,
+    ensure_test_type_retake_after_days,
     ensure_user_profile_columns,
 )
 from app.services.attempt_tickets import backfill_attempt_ticket_ids
@@ -155,7 +158,10 @@ def init_db() -> None:
     ensure_user_profile_columns()
     ensure_test_type_schema()
     ensure_test_type_ticket_time_limit()
+    ensure_test_type_question_time_limit()
+    ensure_test_type_retake_after_days()
     ensure_test_tickets_schema()
+    ensure_question_multiple_correct()
     ensure_attempt_reset_enum()
     ensure_attempt_ticket_columns()
     ensure_admin_role_enum()

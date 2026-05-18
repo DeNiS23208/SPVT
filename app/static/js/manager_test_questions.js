@@ -20,6 +20,13 @@
   const ticketsEmpty = document.getElementById("tickets-empty");
   const addTicketBtn = document.getElementById("add-ticket-btn");
   const exportExcelBtn = document.getElementById("export-excel-btn");
+  const questionTimeBtn = document.getElementById("question-time-btn");
+  const questionTimeModal = document.getElementById("question-time-modal");
+  const questionTimeUnlimited = document.getElementById("question-time-unlimited");
+  const questionTimeField = document.getElementById("question-time-field");
+  const questionTimeMinutes = document.getElementById("question-time-minutes");
+  const questionTimeSave = document.getElementById("question-time-save");
+  const questionTimeCancel = document.getElementById("question-time-cancel");
   const ticketTimeBtn = document.getElementById("ticket-time-btn");
   const ticketTimeModal = document.getElementById("ticket-time-modal");
   const ticketTimeUnlimited = document.getElementById("ticket-time-unlimited");
@@ -48,22 +55,33 @@
     hideError(errorBox);
   }
 
-  function formatTicketTimeHint(minutes) {
-    if (minutes == null || minutes < 1) return "без лимита по времени";
-    const n = Number(minutes);
+  function pluralMinutes(n) {
     const mod10 = n % 10;
     const mod100 = n % 100;
-    let word = "минут";
-    if (mod10 === 1 && mod100 !== 11) word = "минута";
-    else if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) word = "минуты";
-    return `${n} ${word} на билет`;
+    if (mod10 === 1 && mod100 !== 11) return "минута";
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "минуты";
+    return "минут";
+  }
+
+  function formatTicketTimeHint(minutes) {
+    if (minutes == null || minutes < 1) return "без лимита на билет";
+    const n = Number(minutes);
+    return `${n} ${pluralMinutes(n)} на билет`;
+  }
+
+  function formatQuestionTimeHint(seconds) {
+    if (seconds == null || seconds < 1) return "без лимита на вопрос";
+    const n = Math.round(seconds / 60);
+    if (n >= 1 && n * 60 === seconds) return `${n} ${pluralMinutes(n)} на вопрос`;
+    return `${seconds} сек. на вопрос`;
   }
 
   function updateTestSubtitle() {
     if (!testInfo) return;
-    const limit = formatTicketTimeHint(testInfo.ticket_time_limit_minutes);
+    const ticketLimit = formatTicketTimeHint(testInfo.ticket_time_limit_minutes);
+    const questionLimit = formatQuestionTimeHint(testInfo.question_time_limit_seconds);
     document.getElementById("test-subtitle").textContent =
-      `${testInfo.title} · всего ${testInfo.questions_count} вопр. · ${limit}`;
+      `${testInfo.title} · всего ${testInfo.questions_count} вопр. · ${questionLimit} · ${ticketLimit}`;
   }
 
   async function loadTestInfo() {
@@ -95,10 +113,70 @@
     ticketTimeModal.classList.add("hidden");
   }
 
+  function syncQuestionTimeForm() {
+    const unlimited = questionTimeUnlimited.checked;
+    questionTimeField.classList.toggle("is-disabled", unlimited);
+    questionTimeMinutes.disabled = unlimited;
+  }
+
+  function openQuestionTimeModal() {
+    const seconds = testInfo?.question_time_limit_seconds;
+    if (seconds == null || seconds < 1) {
+      questionTimeUnlimited.checked = true;
+      questionTimeMinutes.value = "2";
+    } else {
+      questionTimeUnlimited.checked = false;
+      const minutes = Math.max(1, Math.round(seconds / 60));
+      questionTimeMinutes.value = String(minutes);
+    }
+    syncQuestionTimeForm();
+    questionTimeModal.classList.remove("hidden");
+    questionTimeMinutes.focus();
+  }
+
+  function closeQuestionTimeModal() {
+    questionTimeModal.classList.add("hidden");
+  }
+
   async function loadTickets() {
     tickets = await API.get(`${apiBase}/tickets`, token);
     renderTickets();
     await loadTestInfo();
+  }
+
+  function correctAnswersSet(question) {
+    if (question.allow_multiple_correct) {
+      try {
+        const arr = JSON.parse(question.correct_answer || "[]");
+        return Array.isArray(arr) ? new Set(arr.map(String)) : new Set();
+      } catch {
+        return new Set();
+      }
+    }
+    const s = new Set();
+    if (question.correct_answer) s.add(question.correct_answer);
+    return s;
+  }
+
+  function syncAnswerOptionsHint(formEl) {
+    const hint = formEl.querySelector(".answer-options-fieldset .form-hint");
+    if (!hint) return;
+    const multi = formEl.querySelector('[name="allow_multiple_correct"]')?.checked;
+    hint.textContent = multi
+      ? "Отметьте галочкой все правильные варианты. Минимум два варианта в списке и не менее двух правильных."
+      : "Отметьте галочкой один правильный вариант. Минимум два варианта.";
+  }
+
+  function enforceSingleCorrectIfNeeded(formEl) {
+    const multi = formEl.querySelector('[name="allow_multiple_correct"]')?.checked;
+    if (multi) return;
+    const list = formEl.querySelector("[data-options-list]");
+    if (!list) return;
+    const checked = list.querySelector(".answer-correct-cb:checked");
+    const keep = checked || list.querySelector(".answer-correct-cb");
+    list.querySelectorAll(".answer-correct-cb").forEach((cb) => {
+      cb.checked = cb === keep;
+    });
   }
 
   function questionFormMarkup(submitLabel) {
@@ -107,6 +185,12 @@
         <div class="form-field">
           <label>Текст вопроса <span class="field-required">*</span></label>
           <textarea name="text" rows="3" required placeholder="Введите формулировку вопроса"></textarea>
+        </div>
+        <div class="form-field form-field-checkbox">
+          <label class="checkbox-label">
+            <input type="checkbox" name="allow_multiple_correct" value="1">
+            Несколько правильных ответов
+          </label>
         </div>
         <fieldset class="answer-options-fieldset">
           <legend>Варианты ответа <span class="field-required">*</span></legend>
@@ -135,13 +219,17 @@
     `;
     const cb = row.querySelector(".answer-correct-cb");
     cb.addEventListener("change", () => {
-      if (!cb.checked) {
-        cb.checked = true;
-        return;
+      const form = row.closest(".question-form");
+      const multi = form?.querySelector('[name="allow_multiple_correct"]')?.checked;
+      if (!multi) {
+        if (!cb.checked) {
+          cb.checked = true;
+          return;
+        }
+        row.parentElement.querySelectorAll(".answer-correct-cb").forEach((other) => {
+          if (other !== cb) other.checked = false;
+        });
       }
-      row.parentElement.querySelectorAll(".answer-correct-cb").forEach((other) => {
-        if (other !== cb) other.checked = false;
-      });
     });
     row.querySelector(".btn-icon-remove").addEventListener("click", () => {
       const list = row.parentElement;
@@ -156,34 +244,53 @@
 
   function readFormPayload(formEl) {
     const text = formEl.querySelector('textarea[name="text"]').value.trim();
+    const allowMultiple = !!formEl.querySelector('[name="allow_multiple_correct"]')?.checked;
     const list = formEl.querySelector("[data-options-list]");
     const rows = [...list.querySelectorAll(".answer-option-row")];
     const options = rows
       .map((row) => row.querySelector(".answer-option-text").value.trim())
       .filter(Boolean);
-    const checkedCb = list.querySelector(".answer-correct-cb:checked");
-    let correctAnswer = "";
-    if (checkedCb) {
-      const row = checkedCb.closest(".answer-option-row");
-      if (row) correctAnswer = row.querySelector(".answer-option-text").value.trim();
+    const correctTexts = rows
+      .filter((row) => row.querySelector(".answer-correct-cb")?.checked)
+      .map((row) => row.querySelector(".answer-option-text").value.trim())
+      .filter(Boolean);
+    if (allowMultiple) {
+      return {
+        text,
+        options,
+        allow_multiple_correct: true,
+        correct_answers: correctTexts,
+        correct_answer: "",
+      };
     }
-    return { text, options, correct_answer: correctAnswer };
+    return {
+      text,
+      options,
+      allow_multiple_correct: false,
+      correct_answer: correctTexts[0] || "",
+      correct_answers: null,
+    };
   }
 
   function fillQuestionForm(wrap, question) {
     const formEl = wrap.querySelector(".question-form");
     formEl.querySelector('textarea[name="text"]').value = question.text || "";
+    const allowCb = formEl.querySelector('[name="allow_multiple_correct"]');
+    if (allowCb) allowCb.checked = !!question.allow_multiple_correct;
+    syncAnswerOptionsHint(formEl);
     const list = formEl.querySelector("[data-options-list]");
     list.innerHTML = "";
+    const correctSet = correctAnswersSet(question);
     const options = question.options && question.options.length >= 2 ? question.options : ["", ""];
     options.forEach((opt, idx) => {
-      const isCorrect = opt === question.correct_answer;
-      list.appendChild(createOptionRow(opt, isCorrect || (idx === 0 && !question.correct_answer)));
+      const isCorrect = correctSet.has(opt);
+      list.appendChild(createOptionRow(opt, isCorrect || (idx === 0 && correctSet.size === 0)));
     });
     if (!list.querySelector(".answer-correct-cb:checked")) {
       const first = list.querySelector(".answer-correct-cb");
       if (first) first.checked = true;
     }
+    enforceSingleCorrectIfNeeded(formEl);
   }
 
   function bindQuestionForm(wrap, ticketId, questionId) {
@@ -194,6 +301,14 @@
     if (!isEdit) {
       list.appendChild(createOptionRow("", true));
       list.appendChild(createOptionRow("", false));
+    }
+
+    const allowMulti = formEl.querySelector('[name="allow_multiple_correct"]');
+    if (allowMulti) {
+      allowMulti.addEventListener("change", () => {
+        syncAnswerOptionsHint(formEl);
+        enforceSingleCorrectIfNeeded(formEl);
+      });
     }
 
     formEl.querySelector(".btn-add-option").addEventListener("click", () => {
@@ -238,6 +353,7 @@
         showError(errorBox, err.message);
       }
     });
+    syncAnswerOptionsHint(formEl);
   }
 
   function openCreateForm(ticketId) {
@@ -281,12 +397,15 @@
           </div>
         </div>
         <ul class="ticket-question-options">
-          ${q.options
-            .map(
-              (opt) =>
-                `<li class="${opt === q.correct_answer ? "ticket-option-correct" : ""}">${escapeHtml(opt)}</li>`
-            )
-            .join("")}
+          ${(() => {
+            const ok = correctAnswersSet(q);
+            return q.options
+              .map(
+                (opt) =>
+                  `<li class="${ok.has(opt) ? "ticket-option-correct" : ""}">${escapeHtml(opt)}</li>`
+              )
+              .join("");
+          })()}
         </ul>
       </li>
     `;
@@ -448,6 +567,49 @@
       showError(errorBox, err.message);
     } finally {
       addTicketBtn.disabled = false;
+    }
+  });
+
+  questionTimeBtn.addEventListener("click", () => {
+    hideError(errorBox);
+    openQuestionTimeModal();
+  });
+
+  questionTimeUnlimited.addEventListener("change", syncQuestionTimeForm);
+
+  questionTimeCancel.addEventListener("click", closeQuestionTimeModal);
+
+  questionTimeModal.addEventListener("click", (e) => {
+    if (e.target === questionTimeModal) closeQuestionTimeModal();
+  });
+
+  questionTimeSave.addEventListener("click", async () => {
+    hideError(errorBox);
+    let payload;
+    if (questionTimeUnlimited.checked) {
+      payload = { question_time_limit_seconds: null };
+    } else {
+      const minutes = parseInt(questionTimeMinutes.value, 10);
+      if (!Number.isFinite(minutes) || minutes < 1 || minutes > 60) {
+        showError(errorBox, "Укажите от 1 до 60 минут или включите «Без ограничения».");
+        return;
+      }
+      payload = { question_time_limit_seconds: minutes * 60 };
+    }
+    questionTimeSave.disabled = true;
+    try {
+      testInfo = await API.patch(apiBase, token, payload);
+      updateTestSubtitle();
+      closeQuestionTimeModal();
+      showSuccess(
+        payload.question_time_limit_seconds == null
+          ? "Лимит времени на вопрос снят для этого теста."
+          : `Установлено: ${formatQuestionTimeHint(payload.question_time_limit_seconds)}.`
+      );
+    } catch (err) {
+      showError(errorBox, err.message);
+    } finally {
+      questionTimeSave.disabled = false;
     }
   });
 

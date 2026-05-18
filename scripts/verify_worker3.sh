@@ -14,7 +14,8 @@ echo "=== Submit test ==="
 curl -sS -H "Authorization: Bearer $TOKEN" "$BASE/api/test/questions" > /tmp/q.json
 python3 - <<'PY'
 import json
-qs = json.load(open("/tmp/q.json"))
+data = json.load(open("/tmp/q.json"))
+qs = data["questions"] if isinstance(data, dict) else data
 answers = []
 for q in qs:
     ans = q["options"][0]
