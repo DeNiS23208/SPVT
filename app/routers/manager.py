@@ -559,7 +559,7 @@ def _worker_shift_rows(
 ) -> list[WorkerShiftEntry]:
     workers = (
         db.query(User)
-        .filter(User.role == UserRole.worker)
+        .filter(User.role == UserRole.worker, User.is_active.is_(True))
         .order_by(User.full_name, User.id)
         .all()
     )
@@ -652,7 +652,12 @@ def workers_filter_options(
         row[0]
         for row in (
             db.query(User.department)
-            .filter(User.role == UserRole.worker, User.department.isnot(None), User.department != "")
+            .filter(
+                User.role == UserRole.worker,
+                User.is_active.is_(True),
+                User.department.isnot(None),
+                User.department != "",
+            )
             .distinct()
             .order_by(User.department)
             .all()
@@ -662,7 +667,12 @@ def workers_filter_options(
         row[0]
         for row in (
             db.query(User.position)
-            .filter(User.role == UserRole.worker, User.position.isnot(None), User.position != "")
+            .filter(
+                User.role == UserRole.worker,
+                User.is_active.is_(True),
+                User.position.isnot(None),
+                User.position != "",
+            )
             .distinct()
             .order_by(User.position)
             .all()
@@ -793,14 +803,16 @@ def dashboard(
     ),
 ):
     shift = _parse_workers_shift_date(shift_date)
-    workers = db.query(User).filter(User.role == UserRole.worker).all()
+    workers = db.query(User).filter(User.role == UserRole.worker, User.is_active.is_(True)).all()
     attempts_q = (
         db.query(TestAttempt)
+        .join(TestAttempt.user)
         .options(
             joinedload(TestAttempt.user),
             joinedload(TestAttempt.test_type),
             joinedload(TestAttempt.ticket),
         )
+        .filter(User.is_active.is_(True))
         .order_by(TestAttempt.shift_date.desc(), TestAttempt.id.desc())
     )
     if shift is not None:

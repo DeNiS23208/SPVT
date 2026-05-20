@@ -3,7 +3,7 @@ import io
 
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Answer, AttemptStatus, TestAttempt
+from app.models import Answer, AttemptStatus, TestAttempt, User
 
 
 def build_powerbi_csv(attempts: list[TestAttempt]) -> str:
@@ -151,12 +151,13 @@ def build_powerbi_summary_csv(attempts: list[TestAttempt]) -> str:
 def fetch_attempts_for_export(db: Session, shift_date: str | None) -> list[TestAttempt]:
     query = (
         db.query(TestAttempt)
+        .join(TestAttempt.user)
         .options(
             joinedload(TestAttempt.user),
             joinedload(TestAttempt.test_type),
             joinedload(TestAttempt.answers).joinedload(Answer.question),
         )
-        .filter(TestAttempt.finished_at.isnot(None))
+        .filter(TestAttempt.finished_at.isnot(None), User.is_active.is_(True))
         .order_by(TestAttempt.id)
     )
     if shift_date:

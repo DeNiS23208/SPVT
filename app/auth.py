@@ -44,6 +44,8 @@ def authenticate_user(
     user = db.query(User).filter(User.username == username).first()
     if not user or not verify_password(password, user.password_hash):
         return None
+    if user.role == UserRole.worker and not user.is_active:
+        return None
     if user.role == UserRole.worker and department:
         user_dept = (user.department or "").strip()
         if user_dept != department.strip():

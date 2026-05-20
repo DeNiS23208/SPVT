@@ -63,6 +63,22 @@ def ensure_user_profile_columns() -> None:
                 conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {column_type}"))
 
 
+def ensure_user_is_active_column() -> None:
+    inspector = inspect(engine)
+    if "users" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("users")}
+    if "is_active" in columns:
+        return
+    with engine.begin() as conn:
+        if is_postgresql():
+            conn.execute(
+                text("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE")
+            )
+        else:
+            conn.execute(text("ALTER TABLE users ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT 1"))
+
+
 def ensure_test_type_schema() -> None:
     """Таблица test_types и связь вопросов/попыток с типом теста."""
     inspector = inspect(engine)

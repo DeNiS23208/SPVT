@@ -21,7 +21,12 @@ def public_site_settings(db: Annotated[Session, Depends(get_db)]):
 def list_departments(db: Annotated[Session, Depends(get_db)]):
     rows = (
         db.query(User.department)
-        .filter(User.role == UserRole.worker, User.department.isnot(None), User.department != "")
+        .filter(
+            User.role == UserRole.worker,
+            User.is_active.is_(True),
+            User.department.isnot(None),
+            User.department != "",
+        )
         .distinct()
         .order_by(User.department)
         .all()
@@ -39,6 +44,7 @@ def list_department_workers(
         db.query(User)
         .filter(
             User.department == dept,
+            User.is_active.is_(True),
             User.role.in_((UserRole.worker, UserRole.admin)),
         )
         .order_by(User.full_name)

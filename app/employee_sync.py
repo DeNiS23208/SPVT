@@ -109,6 +109,7 @@ def sync_employees_from_excel(
                     full_name=row.full_name,
                     position=row.position or None,
                     department=row.department or None,
+                    is_active=True,
                 )
             )
             stats.created += 1

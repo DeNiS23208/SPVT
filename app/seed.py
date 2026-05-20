@@ -19,6 +19,7 @@ from app.schema_migrate import (
     ensure_test_type_question_time_limit,
     ensure_test_type_retake_after_days,
     ensure_user_profile_columns,
+    ensure_user_is_active_column,
 )
 from app.services.attempt_tickets import backfill_attempt_ticket_ids
 from app.services.test_tickets import (
@@ -156,6 +157,7 @@ def ensure_test_types(db) -> tuple[TestType, TestType]:
 def init_db() -> None:
     Base.metadata.create_all(bind=engine)
     ensure_user_profile_columns()
+    ensure_user_is_active_column()
     ensure_test_type_schema()
     ensure_test_type_ticket_time_limit()
     ensure_test_type_question_time_limit()

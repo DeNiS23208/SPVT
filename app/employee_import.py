@@ -107,6 +107,7 @@ def import_employees_from_xlsx(
                 full_name=employee.full_name,
                 position=employee.position or None,
                 department=employee.department or None,
+                is_active=True,
             )
         )
         stats.created += 1

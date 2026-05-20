@@ -38,6 +38,7 @@ class User(Base):
     full_name: Mapped[str] = mapped_column(String(128))
     position: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     department: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     attempts: Mapped[list["TestAttempt"]] = relationship(back_populates="user")
 

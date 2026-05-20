@@ -37,6 +37,7 @@ def find_workers_by_name(db: Session, query: str, *, limit: int = 40) -> list[Us
         db.query(User)
         .filter(
             User.role.in_((UserRole.worker, UserRole.admin)),
+            User.is_active.is_(True),
             User.department.isnot(None),
             User.department != "",
         )
